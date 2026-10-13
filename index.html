@@ -6,80 +6,97 @@
 <title>Clan Capital</title>
 <meta name="description" content="Track a South African family's income, spending, budget, investments and debt, for the whole household and each member.">
 <style>
-/* Intro screen. Inline so it paints instantly, before any other file loads.
-   One deliberate deep-green look in both light and dark themes. */
-:root { --splash-bg: #0b3a2c; --splash-ink: #eef5f1; --splash-gold: #e6bd5c; }
+/* Intro: smart insight cards. Inline so it paints on the first frame.
+   Content is revealed with class changes + transitions (not keyframe animations),
+   so it still shows on devices where animations are switched off. */
+:root { --sp-bg: #0b3a2c; --sp-ink: #eef5f1; --sp-muted: rgba(238, 245, 241, .68); --sp-gold: #e6bd5c; --sp-card: rgba(255, 255, 255, .07); --sp-line: rgba(255, 255, 255, .14); --sp-good: #6fd08c; --sp-warn: #f0c35a; --sp-bad: #ff8a80; }
 .splash {
-  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px 16px;
-  background: radial-gradient(circle at 50% 40%, rgba(230, 189, 92, .14), transparent 58%), var(--splash-bg);
-  color: var(--splash-ink); cursor: pointer; opacity: 1;
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px 16px; overflow: auto;
+  background: radial-gradient(circle at 50% 30%, rgba(230, 189, 92, .13), transparent 60%), var(--sp-bg);
+  color: var(--sp-ink); cursor: pointer; opacity: 1;
   font-family: "Public Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
-  will-change: opacity;
 }
-.splash-inner { display: grid; justify-items: center; text-align: center; gap: 10px; max-width: 520px; will-change: opacity, transform; }
-.splash-mark { width: 76px; height: 76px; color: var(--splash-ink); margin-bottom: 6px; }
-.splash-mark .bar { transform-origin: 50% 48px; transform-box: view-box; transform: scaleY(0); }
-.splash-greet, .splash-name, .splash-figure, .splash-insight, .splash-skip { opacity: 0; }
-.splash-greet { font-size: .95rem; letter-spacing: .04em; margin: 0; }
-.splash-name { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-weight: 650; font-size: clamp(2.4rem, 8vw, 3.6rem); letter-spacing: -0.02em; line-height: 1; margin: 0; color: var(--splash-ink); }
-.splash-figure { display: grid; gap: 2px; margin-top: 14px; }
-.splash-label { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; opacity: .7; }
-.splash-value { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-size: clamp(1.6rem, 6vw, 2.2rem); color: var(--splash-gold); font-variant-numeric: tabular-nums; display: inline-block; text-align: right; white-space: pre; }
-.splash-insight { font-size: .95rem; min-height: 1.4em; margin: 0; }
-.splash-skip { font-size: .75rem; margin: 18px 0 0; }
+.sp-wrap { width: min(560px, 100%); display: grid; gap: 18px; }
+.sp-head { display: flex; align-items: center; gap: 12px; }
+.sp-mark { width: 40px; height: 40px; flex: none; color: var(--sp-ink); }
+.sp-hello { display: grid; gap: 2px; }
+.sp-brand { font-size: .72rem; letter-spacing: .16em; text-transform: uppercase; color: var(--sp-muted); }
+.sp-greet { margin: 0; font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-weight: 650; font-size: clamp(1.35rem, 4.6vw, 1.9rem); line-height: 1.15; letter-spacing: -0.01em; }
+.sp-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sp-card { background: var(--sp-card); border: 1px solid var(--sp-line); border-radius: 14px; padding: 14px 16px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+.sp-label { font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; color: var(--sp-muted); }
+.sp-value { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-size: clamp(1.15rem, 4.4vw, 1.5rem); color: var(--sp-gold); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-sub { font-size: .82rem; color: var(--sp-muted); line-height: 1.35; }
+.sp-sub b { color: var(--sp-ink); font-weight: 600; }
+.sp-bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, .12); overflow: hidden; margin-top: 4px; }
+.sp-bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--sp-good); transition: width 1.4s cubic-bezier(.2, .8, .2, 1) 1.2s; }
+.sp-good { color: var(--sp-good); } .sp-warn { color: var(--sp-warn); } .sp-bad { color: var(--sp-bad); }
+.sp-skip { font-size: .75rem; color: var(--sp-muted); text-align: center; }
+@media (max-width: 380px) { .sp-cards { grid-template-columns: 1fr; } }
 
-/* Entrance: starts once fonts are ready, so nothing jumps */
-.splash.go .bar { animation: sp-grow 1s cubic-bezier(.2, .8, .2, 1) forwards; }
-.splash.go .b2 { animation-delay: .12s; } .splash.go .b3 { animation-delay: .24s; }
-.splash.go .splash-greet   { animation: sp-up .9s cubic-bezier(.2, .8, .2, 1) .3s forwards; }
-.splash.go .splash-name    { animation: sp-up .9s cubic-bezier(.2, .8, .2, 1) .45s forwards; }
-.splash.go .splash-figure  { animation: sp-up .9s cubic-bezier(.2, .8, .2, 1) .75s forwards; }
-.splash.go .splash-insight { animation: sp-up .9s cubic-bezier(.2, .8, .2, 1) 2.4s forwards; }
-.splash.go .splash-skip    { animation: sp-fade .8s ease 1.4s forwards; }
-@keyframes sp-grow { to { transform: scaleY(1); } }
-@keyframes sp-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-@keyframes sp-fade { to { opacity: .45; } }
-
-/* Exit: the content lifts and fades first, then the green dissolves over the app */
-.splash.leave { opacity: 0; transition: opacity .8s cubic-bezier(.4, 0, .2, 1) .25s; pointer-events: none; }
-.splash.leave .splash-inner { opacity: 0; transform: translateY(-14px); transition: opacity .45s ease, transform .6s cubic-bezier(.4, 0, .2, 1); }
-
+/* Hidden until the intro starts */
+.sp-head, .sp-card, .sp-skip { opacity: 0; transform: translateY(22px); }
+/* Float in, one by one */
+.splash.go .sp-head, .splash.go .sp-card, .splash.go .sp-skip {
+  opacity: 1; transform: none;
+  transition: opacity .8s ease, transform 1s cubic-bezier(.2, .8, .2, 1);
+}
+.splash.go .sp-head { transition-delay: .1s; }
+.splash.go .sp-card:nth-child(1) { transition-delay: .45s; }
+.splash.go .sp-card:nth-child(2) { transition-delay: .7s; }
+.splash.go .sp-card:nth-child(3) { transition-delay: .95s; }
+.splash.go .sp-card:nth-child(4) { transition-delay: 1.2s; }
+.splash.go .sp-skip { opacity: .6; transition-delay: 1.8s; }
+/* Drift up and away, one by one, then the green dissolves over the app */
+.splash.go.leave .sp-head, .splash.go.leave .sp-card, .splash.go.leave .sp-skip {
+  opacity: 0; transform: translateY(-36px);
+  transition: opacity .6s ease, transform .8s cubic-bezier(.5, 0, .3, 1);
+}
+.splash.go.leave .sp-head { transition-delay: 0s; }
+.splash.go.leave .sp-card:nth-child(1) { transition-delay: .08s; }
+.splash.go.leave .sp-card:nth-child(2) { transition-delay: .16s; }
+.splash.go.leave .sp-card:nth-child(3) { transition-delay: .24s; }
+.splash.go.leave .sp-card:nth-child(4) { transition-delay: .32s; }
+.splash.go.leave .sp-skip { transition-delay: 0s; }
+.splash.leave { opacity: 0; pointer-events: none; transition: opacity .9s ease .55s; }
 @media (prefers-reduced-motion: reduce) {
-  .splash.go .bar, .splash.go .splash-greet, .splash.go .splash-name, .splash.go .splash-figure, .splash.go .splash-insight, .splash.go .splash-skip { animation: sp-fade-full .4s ease forwards; }
-  .splash.go .bar { transform: none; }
-  .splash.leave .splash-inner { transform: none; }
-  @keyframes sp-fade-full { from { opacity: 0; } to { opacity: 1; } }
+  .sp-head, .sp-card, .sp-skip, .splash.go.leave .sp-head, .splash.go.leave .sp-card, .splash.go.leave .sp-skip { transform: none; }
 }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="css/styles.css?v=20261013152023">
+<link rel="stylesheet" href="css/styles.css?v=20261013181336">
 </head>
 <body>
 
 <div id="splash" class="splash" role="dialog" aria-label="Welcome to Clan Capital">
-  <div class="splash-inner">
-    <svg class="splash-mark" viewBox="0 0 64 64" aria-hidden="true">
-      <circle cx="32" cy="32" r="29" fill="none" stroke="currentColor" stroke-width="2.5" opacity=".35"/>
-      <rect class="bar b1" x="17" y="34" width="8" height="14" rx="2" fill="currentColor"/>
-      <rect class="bar b2" x="28" y="26" width="8" height="22" rx="2" fill="currentColor"/>
-      <rect class="bar b3" x="39" y="17" width="8" height="31" rx="2" fill="var(--splash-gold)"/>
-    </svg>
-    <p class="splash-greet" id="splash-greet">Welcome</p>
-    <h2 class="splash-name">Clan Capital</h2>
-    <div class="splash-figure"><span class="splash-label">Family net worth</span><span class="splash-value" id="splash-value">R 0</span></div>
-    <p class="splash-insight" id="splash-insight"></p>
-    <p class="splash-skip">Tap or click to continue</p>
+  <div class="sp-wrap">
+    <div class="sp-head">
+      <svg class="sp-mark" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="29" fill="none" stroke="currentColor" stroke-width="2.5" opacity=".35"/>
+        <rect x="17" y="34" width="8" height="14" rx="2" fill="currentColor"/>
+        <rect x="28" y="26" width="8" height="22" rx="2" fill="currentColor"/>
+        <rect x="39" y="17" width="8" height="31" rx="2" fill="#e6bd5c"/>
+      </svg>
+      <div class="sp-hello"><span class="sp-brand">Clan Capital</span><p class="sp-greet" id="sp-greet">Welcome back</p></div>
+    </div>
+    <div class="sp-cards" id="sp-cards">
+      <div class="sp-card"><span class="sp-label">Net worth</span><span class="sp-value" id="sp-nw">&nbsp;</span><span class="sp-sub" id="sp-nw-sub">&nbsp;</span></div>
+      <div class="sp-card"><span class="sp-label">Budget this month</span><span class="sp-value" id="sp-bud">&nbsp;</span><span class="sp-sub" id="sp-bud-sub">&nbsp;</span><div class="sp-bar"><i id="sp-bud-bar"></i></div></div>
+      <div class="sp-card"><span class="sp-label">Goals on track</span><span class="sp-value" id="sp-goal">&nbsp;</span><span class="sp-sub" id="sp-goal-sub">&nbsp;</span></div>
+      <div class="sp-card"><span class="sp-label">Debt-free</span><span class="sp-value" id="sp-debt">&nbsp;</span><span class="sp-sub" id="sp-debt-sub">&nbsp;</span></div>
+    </div>
+    <p class="sp-skip">Tap or click to continue</p>
   </div>
 </div>
 <script>
-/* Safety net: even if the main script is slow or fails, the intro still fades in and out */
+/* Safety net: even if the main script is slow or fails, the intro still shows and then leaves */
 (function () {
   var el = document.getElementById('splash');
   if (!el) return;
   setTimeout(function () { if (el.isConnected) el.classList.add('go'); }, 1500);
-  setTimeout(function () { if (el.isConnected) { el.classList.add('leave'); setTimeout(function () { el.remove(); }, 1200); } }, 9000);
+  setTimeout(function () { if (el.isConnected) { el.classList.add('leave'); setTimeout(function () { el.remove(); }, 1600); } }, 9000);
 })();
 </script>
 
@@ -113,10 +130,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="js/core.js?v=20261013152023"></script>
-<script src="js/sample.js?v=20261013152023"></script>
-<script src="js/planner.js?v=20261013152023"></script>
-<script src="js/goals.js?v=20261013152023"></script>
-<script src="js/app.js?v=20261013152023"></script>
+<script src="js/core.js?v=20261013181336"></script>
+<script src="js/sample.js?v=20261013181336"></script>
+<script src="js/planner.js?v=20261013181336"></script>
+<script src="js/goals.js?v=20261013181336"></script>
+<script src="js/app.js?v=20261013181336"></script>
 </body>
 </html>

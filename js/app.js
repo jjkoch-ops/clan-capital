@@ -1391,34 +1391,59 @@
   render();
   playIntro();
 
-  // ---------- Intro: greeting, net worth counting up, one insight, then it fades away ----------
+  // ---------- Intro: smart insight cards float in, hold, then drift up and away ----------
   function playIntro() {
     var el = document.getElementById('splash');
     if (!el) return;
     var seen = false;
     try { seen = sessionStorage.getItem('clancapital.intro') === '1'; sessionStorage.setItem('clancapital.intro', '1'); } catch (e) { /* show it anyway */ }
     if (seen) { el.remove(); return; }
+    var set = function (id, html) { var n = document.getElementById(id); if (n) n.innerHTML = html; };
 
     var hour = new Date().getHours();
-    var part = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-    $('#splash-greet').textContent = part + ', ' + S.household.name;
+    set('sp-greet', (hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening') + ', ' + esc(S.household.name));
 
     var keep = UI.member; UI.member = 'all';
-    var target = Math.round(netWorthNow().net);
-    var goals = S.goals.map(function (g) { return goalProjection(g).status; });
-    var onTrack = goals.filter(function (st) { return st === 'on-track' || st === 'reached'; }).length;
-    var snaps = S.snapshots.slice().sort(function (a, b) { return a.month < b.month ? -1 : 1; });
-    var first = snaps[0] ? snapValue(snaps[0]).net : null;
-    UI.member = keep;
-    $('#splash-insight').textContent = first != null && target > first
-      ? 'Up ' + fmtR(target - first) + ' since ' + HS.monthLabel(snaps[0].month, true)
-        + (goals.length ? ' · ' + onTrack + ' of ' + goals.length + ' goals on track' : '')
-      : goals.length ? onTrack + ' of ' + goals.length + ' goals on track' : 'Your family\'s whole financial picture';
+    try {
+      // 1. Net worth and its change over the saved history
+      var nw = Math.round(netWorthNow().net);
+      var snaps = S.snapshots.slice().sort(function (x, y) { return x.month < y.month ? -1 : 1; });
+      var first = snaps.length ? snapValue(snaps[0]).net : null;
+      set('sp-nw-sub', first != null
+        ? '<b class="' + (nw >= first ? 'sp-good' : 'sp-bad') + '">' + (nw >= first ? '▲ ' : '▼ ') + fmtR(Math.abs(nw - first), { compact: true }) + '</b> since ' + HS.monthLabel(snaps[0].month, true)
+        : 'Save a monthly snapshot to see the trend');
 
-    // Reserve the final width so the number grows in place instead of shifting sideways
-    var valueEl = $('#splash-value');
-    var finalText = fmtR(target);
-    var pad = function (t) { return Array(Math.max(0, finalText.length - t.length) + 1).join(' ') + t; };
+      // 2. Budget this month
+      var b = budgetRows(THIS_MONTH);
+      var tb = sum(b.rows, function (r) { return r.amount; }), ts = sum(b.rows, function (r) { return r.spent; });
+      var days = new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 0).getDate() - TODAY.getDate();
+      var used = tb ? ts / tb : 0;
+      set('sp-bud', tb ? Math.round(used * 100) + '% used' : 'No budget');
+      set('sp-bud-sub', tb ? '<b>' + fmtR(Math.max(0, tb - ts), { compact: true }) + '</b> left · ' + days + ' days to go' : 'Set one up on the Budget tab');
+      var bar = document.getElementById('sp-bud-bar');
+      if (bar) { bar.style.width = Math.min(100, used * 100).toFixed(0) + '%'; bar.style.background = used > 1 ? 'var(--sp-bad)' : used > 0.9 ? 'var(--sp-warn)' : 'var(--sp-good)'; }
+
+      // 3. Goals: how many on track, and the one that needs attention
+      var gp = S.goals.map(function (g) { return { g: g, p: goalProjection(g) }; });
+      var ok = gp.filter(function (x) { return x.p.status === 'on-track' || x.p.status === 'reached'; }).length;
+      var worst = gp.filter(function (x) { return x.p.status === 'behind'; }).sort(function (x, y) { return (y.p.required - (+y.g.monthly || 0)) - (x.p.required - (+x.g.monthly || 0)); })[0];
+      set('sp-goal', gp.length ? ok + ' of ' + gp.length : 'None yet');
+      set('sp-goal-sub', worst ? '<b class="sp-warn">' + esc(worst.g.name) + '</b> needs attention' : gp.length ? 'All goals look healthy' : 'Add one on the Goals tab');
+
+      // 4. Debt-free date on current repayments
+      var ds = S.debts.filter(function (d) { return d.balance > 0; });
+      if (ds.length) {
+        var plan = HS.simulatePayoff(ds, 'avalanche', 0);
+        set('sp-debt', plan.months ? HS.monthLabel(HS.addMonths(THIS_MONTH, plan.months), true) : 'Not on track');
+        set('sp-debt-sub', '<b>' + fmtR(sum(ds, function (d) { return +d.balance; }), { compact: true }) + '</b> owed across ' + ds.length + ' account' + (ds.length > 1 ? 's' : ''));
+      } else { set('sp-debt', 'Debt-free'); set('sp-debt-sub', 'No debt recorded'); }
+    } catch (err) { /* never let the intro break the app */ }
+    UI.member = keep;
+
+    // Net worth counts up in place (fixed width so it doesn't shift)
+    var valueEl = document.getElementById('sp-nw');
+    var finalText = fmtR(nw || 0);
+    var pad = function (t) { return Array(Math.max(0, finalText.length - t.length) + 1).join('\u00a0') + t; };
     valueEl.textContent = pad(fmtR(0));
 
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1426,35 +1451,34 @@
     function leave() {
       if (gone) return; gone = true;
       clearTimeout(timer);
+      el.classList.add('go'); // in case it is skipped before starting
       el.classList.add('leave');
       document.removeEventListener('keydown', leave);
-      setTimeout(function () { el.remove(); }, 1200);
+      setTimeout(function () { el.remove(); }, 1600);
     }
     el.addEventListener('click', leave);
     document.addEventListener('keydown', leave);
 
     function begin() {
-      if (gone || el.classList.contains('go')) return;
+      if (gone) return;
       el.classList.add('go');
       if (reduce) valueEl.textContent = finalText;
       else {
-        var t0 = null, delay = 900, dur = 1700;
+        var t0 = null, delay = 700, dur = 1600;
         var step = function (t) {
-          if (gone) return;
+          if (gone) { valueEl.textContent = finalText; return; }
           if (t0 === null) t0 = t;
           var k = Math.min(1, Math.max(0, (t - t0 - delay) / dur));
-          var eased = 1 - Math.pow(1 - k, 3);
-          valueEl.textContent = k >= 1 ? finalText : pad(fmtR(Math.round(target * eased)));
+          valueEl.textContent = k >= 1 ? finalText : pad(fmtR(Math.round((nw || 0) * (1 - Math.pow(1 - k, 3)))));
           if (k < 1) requestAnimationFrame(step);
         };
         requestAnimationFrame(step);
       }
       timer = setTimeout(leave, 6000);
     }
-    // Start once the fonts are ready (or after 1.2 s at most), and only while the tab is visible
+    // Start when fonts are ready (max 1.2 s) and the tab is visible
     var ready = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
-    var cap = new Promise(function (r) { setTimeout(r, 1200); });
-    Promise.race([ready, cap]).then(function () {
+    Promise.race([ready, new Promise(function (r) { setTimeout(r, 1200); })]).then(function () {
       if (document.hidden) document.addEventListener('visibilitychange', function once() { if (!document.hidden) { document.removeEventListener('visibilitychange', once); begin(); } });
       else begin();
     });
