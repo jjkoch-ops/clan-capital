@@ -256,7 +256,7 @@
     }
     var tfsa = holdingsInScope().filter(function (h) { return h.type === 'TFSA'; });
     if (tfsa.length) {
-      var room = sum(tfsa, function (h) { return Math.max(0, S.settings.tfsaAnnualLimit - (+h.taxYearContrib || 0)); });
+      var room = sum(tfsa, function (h) { return Math.max(0, S.settings.tfsaAnnualLimit - tfsaContrib(h).year); });
       if (room > 0) items.push(['good', '%', 'There is <strong>' + fmtR(room) + '</strong> of tax-free savings room left before the tax year ends in February.']);
     }
     var gb = goalsInScope().map(function (g) { return { g: g, p: goalProjection(g) }; }).filter(function (x) { return x.p.status === 'behind'; });
@@ -476,13 +476,20 @@
     html += '<section class="panel"><header><h3>Tax-free savings (TFSA)</h3><span class="muted small">Tax year ' + ty + '/' + String(ty + 1).slice(2) + ' · 1 Mar – end Feb</span></header>';
     if (!tfsa.length) html += '<div class="empty">No TFSA holdings in view. Add one with type "TFSA" to track your contribution limits.</div>';
     else html += '<div class="barlist">' + tfsa.map(function (h) {
-      var y = +h.taxYearContrib || 0, l = +h.lifetimeContrib || 0;
+      var c = tfsaContrib(h);
+      var y = c.year, l = c.lifetime;
       var ya = S.settings.tfsaAnnualLimit, la = S.settings.tfsaLifetimeLimit;
+      var over = c.projected - ya;
+      var note = y > ya ? '<span class="pill bad">× Over the annual limit by ' + fmtR(y - ya) + '. SARS taxes the excess at 40%.</span>'
+        : over > 0 ? '<span class="pill warn">! At ' + fmtR(+h.monthly || 0) + ' a month you will go ' + fmtR(over) + ' over the limit by end February. Lower the debit order.</span>'
+        : '<span class="small muted">At this rate: ' + fmtR(c.projected) + ' by end February. ' + fmtR(ya - c.projected) + ' room left.</span>';
       return '<div style="display:grid;gap:8px" data-holding="' + h.id + '"><strong>' + esc(h.name) + ' <span class="muted small">· ' + esc(memberName(h.member)) + '</span></strong>' +
         '<div class="barrow"><span class="label">This tax year</span><span class="amt">' + fmtR(y) + ' of ' + fmtR(ya) + '</span><div class="track"><div class="fill ' + (y > ya ? 'bad' : 'good') + '" style="width:' + Math.min(100, y / ya * 100).toFixed(1) + '%"></div></div></div>' +
         '<div class="barrow"><span class="label">Lifetime</span><span class="amt">' + fmtR(l) + ' of ' + fmtR(la) + '</span><div class="track"><div class="fill ' + (l > la ? 'bad' : 'good') + '" style="width:' + Math.min(100, l / la * 100).toFixed(1) + '%"></div></div></div>' +
-        '<div class="form-row"><div class="field"><label>Contributed this tax year</label><input type="number" min="0" step="100" data-field="taxYearContrib" value="' + y + '"></div><div class="field"><label>Contributed in total</label><input type="number" min="0" step="100" data-field="lifetimeContrib" value="' + l + '"></div></div>' +
-        (y > ya ? '<span class="pill bad">× Over the annual limit. SARS charges 40% tax on the excess.</span>' : '') + '</div>';
+        note +
+        '<div class="small muted">Counted automatically: ' + fmtR(c.fromMonthly) + ' from monthly contributions' + (c.fromLumps ? ' + ' + fmtR(c.fromLumps) + ' in lump sums' : '') + (c.base ? ' + ' + fmtR(c.base) + ' paid in before tracking' : '') + ' this tax year.</div>' +
+        '<details><summary class="small">Paid in before you started tracking?</summary><div class="form-row" style="margin-top:8px"><div class="field"><label>Earlier this tax year (R)</label><input type="number" min="0" step="100" data-field="taxYearContrib" value="' + (c.baseYearOk ? (+h.taxYearContrib || 0) : 0) + '"></div><div class="field"><label>In total, all years (R)</label><input type="number" min="0" step="100" data-field="lifetimeContrib" value="' + (+h.lifetimeContrib || 0) + '"></div></div>' +
+        '<p class="small muted" style="margin-top:6px">Enter what you contributed up to this month. From next month the app adds your monthly contribution and lump sums itself.</p></details></div>';
     }).join('') + '</div><p class="small muted" style="margin-top:10px">Limits are set under Import &amp; settings. Check the current figures on the SARS website.</p>';
     html += '</section></div>';
 
@@ -549,6 +556,29 @@
     if (hasFunds(h)) return h.funds.map(function (f) { return { assetClass: f.assetClass, value: +f.value || 0 }; });
     return [{ assetClass: h.assetClass, value: +h.value || 0 }];
   }
+  // TFSA contributions: an opening figure the user entered, plus monthly contributions
+  // and lump sums counted automatically from the month tracking started.
+  function monthsIncl(from, to) { return from > to ? 0 : HS.monthsBetween(from, to) + 1; }
+  function tfsaContrib(h) {
+    var ty = HS.taxYearStart(TODAY.toISOString().slice(0, 10));
+    var tyStart = ty + '-03', tyEnd = (ty + 1) + '-02';
+    var from = h.tfsaFrom || HS.addMonths(THIS_MONTH, 1); // older records: the typed figures cover everything so far
+    var baseYearOk = h.tfsaBaseYear === ty || (!h.tfsaBaseYear && !h.tfsaFrom);
+    var base = baseYearOk ? (+h.taxYearContrib || 0) : 0;
+    var monthly = +h.monthly || 0;
+    var fromMonthly = monthly * monthsIncl(from > tyStart ? from : tyStart, THIS_MONTH);
+    var lumps = h.lumpSums || [];
+    // Only lump sums from the month tracking started; earlier ones are already in the typed figures
+    var counted = lumps.filter(function (x) { return String(x.date).slice(0, 7) >= from; });
+    var fromLumps = sum(counted.filter(function (x) { return String(x.date).slice(0, 7) >= tyStart; }), function (x) { return +x.amount || 0; });
+    var year = base + fromMonthly + fromLumps;
+    var lifetime = (+h.lifetimeContrib || 0) + monthly * monthsIncl(from, THIS_MONTH) + sum(counted, function (x) { return +x.amount || 0; });
+    var nextM = HS.addMonths(THIS_MONTH, 1);
+    var startNext = nextM > from ? nextM : from;
+    var projected = year + monthly * monthsIncl(startNext, tyEnd);
+    return { year: year, lifetime: lifetime, projected: projected, base: base, fromMonthly: fromMonthly, fromLumps: fromLumps, baseYearOk: baseYearOk };
+  }
+
   // Yearly return for a holding: its own rate, or the value-weighted rate of its funds
   function holdingReturn(h) {
     if (hasFunds(h)) {
@@ -1187,7 +1217,12 @@
     if ((row = el.closest('[data-holding]')) && el.dataset.field) {
       var h = S.holdings.find(function (x) { return x.id === row.dataset.holding; });
       if (h) {
-        if (el.dataset.field === 'returnPct') h.returnPct = el.value === '' ? null : +el.value;
+        if (el.dataset.field === 'taxYearContrib' || el.dataset.field === 'lifetimeContrib') {
+          // The typed figure covers everything up to and including this month; automatic counting starts next month
+          h[el.dataset.field] = +el.value || 0;
+          h.tfsaFrom = HS.addMonths(THIS_MONTH, 1);
+          h.tfsaBaseYear = HS.taxYearStart(TODAY.toISOString().slice(0, 10));
+        } else if (el.dataset.field === 'returnPct') h.returnPct = el.value === '' ? null : +el.value;
         else h[el.dataset.field] = el.type === 'number' ? (+el.value || 0) : el.value;
         if (el.dataset.field === 'value' || el.dataset.field === 'monthly') touchHistory(h);
         persist(); render();
@@ -1269,7 +1304,8 @@
       var lump = Math.max(0, +$('#hf-lump').value || 0);
       var rv = $('#hf-return').value;
       var nh2 = { id: HS.uid(), name: $('#hf-name').value.trim(), provider: $('#hf-provider').value.trim(), type: $('#hf-type').value, assetClass: $('#hf-class').value, member: $('#hf-member').value,
-        value: (+$('#hf-value').value || 0) + lump, monthly: Math.max(0, +$('#hf-monthly').value || 0), returnPct: rv === '' ? null : +rv, lumpSums: lump ? [{ date: TODAY.toISOString().slice(0, 10), amount: lump }] : [] };
+        value: (+$('#hf-value').value || 0) + lump, monthly: Math.max(0, +$('#hf-monthly').value || 0), returnPct: rv === '' ? null : +rv, lumpSums: lump ? [{ date: TODAY.toISOString().slice(0, 10), amount: lump }] : [],
+        tfsaFrom: THIS_MONTH, tfsaBaseYear: HS.taxYearStart(TODAY.toISOString().slice(0, 10)), taxYearContrib: 0, lifetimeContrib: 0 };
       touchHistory(nh2); S.holdings.push(nh2);
       persist(); render(); toast('Holding added');
     } else if (f.id === 'debt-form') {

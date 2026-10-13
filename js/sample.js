@@ -95,7 +95,7 @@
     ].filter(function (b) { return b.amount > 0; });
 
     var holdings = [
-      { id: 'h-tfsa', name: 'Satrix MSCI World ETF', provider: 'EasyEquities', type: 'TFSA', assetClass: 'Offshore equity', member: 'm1', value: 142300, monthly: 3000, returnPct: 12.5, taxYearContrib: 24000, lifetimeContrib: 118000 },
+      { id: 'h-tfsa', name: 'Satrix MSCI World ETF', provider: 'EasyEquities', type: 'TFSA', assetClass: 'Offshore equity', member: 'm1', value: 142300, monthly: 3000, returnPct: 12.5, taxYearContrib: 24000, lifetimeContrib: 118000, tfsaFrom: HS.addMonths(thisMonth, 1), tfsaBaseYear: HS.taxYearStart(today.toISOString().slice(0, 10)) },
       { id: 'h-ra', name: 'Allan Gray Balanced Fund', provider: 'Allan Gray', type: 'Retirement annuity', assetClass: 'Balanced / multi-asset', member: 'm2', value: 385600, monthly: 2500, returnPct: 10.2 },
       { id: 'h-gepf', name: 'Government Employees Pension Fund', provider: 'GEPF', type: 'Pension / provident fund', assetClass: 'Balanced / multi-asset', member: 'm2', value: 612000, monthly: 3400, returnPct: 9.5 },
       { id: 'h-ut', name: 'Allan Gray unit trust account', provider: 'Allan Gray', type: 'Unit trust', assetClass: 'Mixed', member: 'joint', value: 96400, monthly: 1000, returnPct: 10,
