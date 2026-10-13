@@ -1398,6 +1398,7 @@
     var seen = false;
     try { seen = sessionStorage.getItem('clancapital.intro') === '1'; sessionStorage.setItem('clancapital.intro', '1'); } catch (e) { /* show it anyway */ }
     if (seen) { el.remove(); return; }
+    document.body.classList.add('intro-active');
 
     var hour = new Date().getHours();
     var part = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -1419,7 +1420,7 @@
     var valueEl = $('#splash-value');
     if (reduce) valueEl.textContent = fmtR(target);
     else {
-      var start = null, dur = 1300, delay = 700;
+      var start = null, dur = 2000, delay = 1000;
       var step = function (t) {
         if (!start) start = t;
         var k = Math.min(1, Math.max(0, (t - start - delay) / dur));
@@ -1434,11 +1435,12 @@
     function leave() {
       if (gone) return; gone = true;
       el.classList.add('leave');
-      setTimeout(function () { el.remove(); }, 950);
+      document.body.classList.remove('intro-active');
+      setTimeout(function () { el.remove(); }, 2200);
       document.removeEventListener('keydown', leave);
     }
     el.addEventListener('click', leave);
     document.addEventListener('keydown', leave);
-    setTimeout(leave, reduce ? 1500 : 3200);
+    setTimeout(leave, reduce ? 3000 : 6000);
   }
 })();
