@@ -54,7 +54,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/styles.css?v=20261013152023">
 </head>
 <body>
 
@@ -73,6 +73,15 @@
     <p class="splash-skip">Tap or click to continue</p>
   </div>
 </div>
+<script>
+/* Safety net: even if the main script is slow or fails, the intro still fades in and out */
+(function () {
+  var el = document.getElementById('splash');
+  if (!el) return;
+  setTimeout(function () { if (el.isConnected) el.classList.add('go'); }, 1500);
+  setTimeout(function () { if (el.isConnected) { el.classList.add('leave'); setTimeout(function () { el.remove(); }, 1200); } }, 9000);
+})();
+</script>
 
 <header class="topbar">
   <div class="topbar-inner">
@@ -104,10 +113,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="js/core.js"></script>
-<script src="js/sample.js"></script>
-<script src="js/planner.js"></script>
-<script src="js/goals.js"></script>
-<script src="js/app.js"></script>
+<script src="js/core.js?v=20261013152023"></script>
+<script src="js/sample.js?v=20261013152023"></script>
+<script src="js/planner.js?v=20261013152023"></script>
+<script src="js/goals.js?v=20261013152023"></script>
+<script src="js/app.js?v=20261013152023"></script>
 </body>
 </html>
