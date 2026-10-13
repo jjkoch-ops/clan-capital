@@ -34,6 +34,9 @@
   --f-body: "Public Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
   --f-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
+  --splash-bg: #0b3a2c;     /* intro screen: one deliberate deep-green look in both themes */
+  --splash-ink: #eef5f1;
+  --splash-gold: #e6bd5c;
   --r: 10px;
   --gap: 16px;
 }
@@ -240,3 +243,32 @@ tr.fund-row > td { background: var(--surface-2); padding: 0; }
 .holdings-table { min-width: 1120px; }
 .holdings-table td select { min-width: 120px; }
 .holdings-table td:first-child { min-width: 190px; }
+
+/* ---- Intro: shows when the app opens, then floats away ---- */
+.splash {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px 16px;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(230, 189, 92, .16), transparent 55%),
+    var(--splash-bg);
+  color: var(--splash-ink); cursor: pointer;
+  transition: transform .9s cubic-bezier(.7, 0, .2, 1), opacity .9s ease, border-radius .9s ease;
+}
+.splash.leave { transform: translateY(-104%); opacity: .6; border-radius: 0 0 50% 50% / 0 0 18% 18%; }
+.splash-inner { display: grid; justify-items: center; text-align: center; gap: 10px; max-width: 520px; }
+.splash-mark { width: 76px; height: 76px; color: var(--splash-ink); margin-bottom: 6px; }
+.splash-mark .bar { transform-origin: 50% 48px; transform-box: view-box; animation: splash-grow .7s cubic-bezier(.2, .8, .2, 1) both; }
+.splash-mark .b1 { animation-delay: .1s; } .splash-mark .b2 { animation-delay: .22s; } .splash-mark .b3 { animation-delay: .34s; }
+@keyframes splash-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.splash-greet, .splash-name, .splash-figure, .splash-insight { animation: splash-up .7s cubic-bezier(.2, .8, .2, 1) both; }
+.splash-greet { font-size: .95rem; letter-spacing: .04em; opacity: .8; animation-delay: .35s; }
+.splash-name { font-family: var(--f-display); font-weight: 650; font-size: clamp(2.4rem, 8vw, 3.6rem); letter-spacing: -0.02em; line-height: 1; color: var(--splash-ink); animation-delay: .45s; }
+.splash-figure { display: grid; gap: 2px; margin-top: 14px; animation-delay: .65s; }
+.splash-label { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; opacity: .7; }
+.splash-value { font-family: var(--f-num); font-size: clamp(1.6rem, 6vw, 2.2rem); color: var(--splash-gold); font-variant-numeric: tabular-nums; }
+.splash-insight { font-size: .95rem; opacity: .85; min-height: 1.4em; animation-delay: .9s; }
+.splash-skip { font-size: .75rem; opacity: .45; margin-top: 18px; }
+@keyframes splash-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .splash { transition: opacity .4s ease; }
+  .splash.leave { transform: none; opacity: 0; border-radius: 0; }
+}

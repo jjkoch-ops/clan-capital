@@ -1389,4 +1389,56 @@
   } catch (e) { /* older browsers */ }
 
   render();
+  playIntro();
+
+  // ---------- Intro: greeting, net worth counting up, one insight, then it floats away ----------
+  function playIntro() {
+    var el = document.getElementById('splash');
+    if (!el) return;
+    var seen = false;
+    try { seen = sessionStorage.getItem('clancapital.intro') === '1'; sessionStorage.setItem('clancapital.intro', '1'); } catch (e) { /* show it anyway */ }
+    if (seen) { el.remove(); return; }
+
+    var hour = new Date().getHours();
+    var part = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    $('#splash-greet').textContent = part + ', ' + S.household.name;
+
+    var keep = UI.member; UI.member = 'all';
+    var target = netWorthNow().net;
+    var goals = S.goals.map(function (g) { return goalProjection(g).status; });
+    var onTrack = goals.filter(function (st) { return st === 'on-track' || st === 'reached'; }).length;
+    var snaps = S.snapshots.slice().sort(function (a, b) { return a.month < b.month ? -1 : 1; });
+    var first = snaps[0] ? snapValue(snaps[0]).net : null;
+    UI.member = keep;
+    var insight = first != null && target > first
+      ? 'Up ' + fmtR(target - first) + ' since ' + HS.monthLabel(snaps[0].month, true)
+      : goals.length ? onTrack + ' of ' + goals.length + ' goals on track' : 'Your family\'s whole financial picture';
+    $('#splash-insight').textContent = insight;
+
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var valueEl = $('#splash-value');
+    if (reduce) valueEl.textContent = fmtR(target);
+    else {
+      var start = null, dur = 1300, delay = 700;
+      var step = function (t) {
+        if (!start) start = t;
+        var k = Math.min(1, Math.max(0, (t - start - delay) / dur));
+        var eased = 1 - Math.pow(1 - k, 3);
+        valueEl.textContent = fmtR(target * eased);
+        if (k < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+
+    var gone = false;
+    function leave() {
+      if (gone) return; gone = true;
+      el.classList.add('leave');
+      setTimeout(function () { el.remove(); }, 950);
+      document.removeEventListener('keydown', leave);
+    }
+    el.addEventListener('click', leave);
+    document.addEventListener('keydown', leave);
+    setTimeout(leave, reduce ? 1500 : 3200);
+  }
 })();
