@@ -5,9 +5,55 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Clan Capital</title>
 <meta name="description" content="Track a South African family's income, spending, budget, investments and debt, for the whole household and each member.">
+<style>
+/* Intro screen. Inline so it paints instantly, before any other file loads.
+   One deliberate deep-green look in both light and dark themes. */
+:root { --splash-bg: #0b3a2c; --splash-ink: #eef5f1; --splash-gold: #e6bd5c; }
+.splash {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px 16px;
+  background: radial-gradient(circle at 50% 40%, rgba(230, 189, 92, .14), transparent 58%), var(--splash-bg);
+  color: var(--splash-ink); cursor: pointer; opacity: 1;
+  font-family: "Public Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  will-change: opacity;
+}
+.splash-inner { display: grid; justify-items: center; text-align: center; gap: 10px; max-width: 520px; will-change: opacity, transform; }
+.splash-mark { width: 76px; height: 76px; color: var(--splash-ink); margin-bottom: 6px; }
+.splash-mark .bar { transform-origin: 50% 48px; transform-box: view-box; transform: scaleY(0); }
+.splash-greet, .splash-name, .splash-figure, .splash-insight, .splash-skip { opacity: 0; }
+.splash-greet { font-size: .95rem; letter-spacing: .04em; margin: 0; }
+.splash-name { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-weight: 650; font-size: clamp(2.4rem, 8vw, 3.6rem); letter-spacing: -0.02em; line-height: 1; margin: 0; color: var(--splash-ink); }
+.splash-figure { display: grid; gap: 2px; margin-top: 14px; }
+.splash-label { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; opacity: .7; }
+.splash-value { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-size: clamp(1.6rem, 6vw, 2.2rem); color: var(--splash-gold); font-variant-numeric: tabular-nums; display: inline-block; text-align: right; white-space: pre; }
+.splash-insight { font-size: .95rem; min-height: 1.4em; margin: 0; }
+.splash-skip { font-size: .75rem; margin: 18px 0 0; }
+
+/* Entrance: starts once fonts are ready, so nothing jumps */
+.splash.go .bar { animation: sp-grow 1s cubic-bezier(.2, .8, .2, 1) forwards; }
+.splash.go .b2 { animation-delay: .12s; } .splash.go .b3 { animation-delay: .24s; }
+.splash.go .splash-greet   { animation: sp-up .9s cubic-bezier(.2, .8, .2, 1) .3s forwards; }
+.splash.go .splash-name    { animation: sp-up .9s cubic-bezier(.2, .8, .2, 1) .45s forwards; }
+.splash.go .splash-figure  { animation: sp-up .9s cubic-bezier(.2, .8, .2, 1) .75s forwards; }
+.splash.go .splash-insight { animation: sp-up .9s cubic-bezier(.2, .8, .2, 1) 2.4s forwards; }
+.splash.go .splash-skip    { animation: sp-fade .8s ease 1.4s forwards; }
+@keyframes sp-grow { to { transform: scaleY(1); } }
+@keyframes sp-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes sp-fade { to { opacity: .45; } }
+
+/* Exit: the content lifts and fades first, then the green dissolves over the app */
+.splash.leave { opacity: 0; transition: opacity .8s cubic-bezier(.4, 0, .2, 1) .25s; pointer-events: none; }
+.splash.leave .splash-inner { opacity: 0; transform: translateY(-14px); transition: opacity .45s ease, transform .6s cubic-bezier(.4, 0, .2, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .splash.go .bar, .splash.go .splash-greet, .splash.go .splash-name, .splash.go .splash-figure, .splash.go .splash-insight, .splash.go .splash-skip { animation: sp-fade-full .4s ease forwards; }
+  .splash.go .bar { transform: none; }
+  .splash.leave .splash-inner { transform: none; }
+  @keyframes sp-fade-full { from { opacity: 0; } to { opacity: 1; } }
+}
+</style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>

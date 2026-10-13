@@ -1391,56 +1391,72 @@
   render();
   playIntro();
 
-  // ---------- Intro: greeting, net worth counting up, one insight, then it floats away ----------
+  // ---------- Intro: greeting, net worth counting up, one insight, then it fades away ----------
   function playIntro() {
     var el = document.getElementById('splash');
     if (!el) return;
     var seen = false;
     try { seen = sessionStorage.getItem('clancapital.intro') === '1'; sessionStorage.setItem('clancapital.intro', '1'); } catch (e) { /* show it anyway */ }
     if (seen) { el.remove(); return; }
-    document.body.classList.add('intro-active');
 
     var hour = new Date().getHours();
     var part = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
     $('#splash-greet').textContent = part + ', ' + S.household.name;
 
     var keep = UI.member; UI.member = 'all';
-    var target = netWorthNow().net;
+    var target = Math.round(netWorthNow().net);
     var goals = S.goals.map(function (g) { return goalProjection(g).status; });
     var onTrack = goals.filter(function (st) { return st === 'on-track' || st === 'reached'; }).length;
     var snaps = S.snapshots.slice().sort(function (a, b) { return a.month < b.month ? -1 : 1; });
     var first = snaps[0] ? snapValue(snaps[0]).net : null;
     UI.member = keep;
-    var insight = first != null && target > first
+    $('#splash-insight').textContent = first != null && target > first
       ? 'Up ' + fmtR(target - first) + ' since ' + HS.monthLabel(snaps[0].month, true)
+        + (goals.length ? ' · ' + onTrack + ' of ' + goals.length + ' goals on track' : '')
       : goals.length ? onTrack + ' of ' + goals.length + ' goals on track' : 'Your family\'s whole financial picture';
-    $('#splash-insight').textContent = insight;
+
+    // Reserve the final width so the number grows in place instead of shifting sideways
+    var valueEl = $('#splash-value');
+    var finalText = fmtR(target);
+    var pad = function (t) { return Array(Math.max(0, finalText.length - t.length) + 1).join(' ') + t; };
+    valueEl.textContent = pad(fmtR(0));
 
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var valueEl = $('#splash-value');
-    if (reduce) valueEl.textContent = fmtR(target);
-    else {
-      var start = null, dur = 2000, delay = 1000;
-      var step = function (t) {
-        if (!start) start = t;
-        var k = Math.min(1, Math.max(0, (t - start - delay) / dur));
-        var eased = 1 - Math.pow(1 - k, 3);
-        valueEl.textContent = fmtR(target * eased);
-        if (k < 1) requestAnimationFrame(step);
-      };
-      requestAnimationFrame(step);
-    }
-
-    var gone = false;
+    var gone = false, timer = null;
     function leave() {
       if (gone) return; gone = true;
+      clearTimeout(timer);
       el.classList.add('leave');
-      document.body.classList.remove('intro-active');
-      setTimeout(function () { el.remove(); }, 2200);
       document.removeEventListener('keydown', leave);
+      setTimeout(function () { el.remove(); }, 1200);
     }
     el.addEventListener('click', leave);
     document.addEventListener('keydown', leave);
-    setTimeout(leave, reduce ? 3000 : 6000);
+
+    function begin() {
+      if (gone || el.classList.contains('go')) return;
+      el.classList.add('go');
+      if (reduce) valueEl.textContent = finalText;
+      else {
+        var t0 = null, delay = 900, dur = 1700;
+        var step = function (t) {
+          if (gone) return;
+          if (t0 === null) t0 = t;
+          var k = Math.min(1, Math.max(0, (t - t0 - delay) / dur));
+          var eased = 1 - Math.pow(1 - k, 3);
+          valueEl.textContent = k >= 1 ? finalText : pad(fmtR(Math.round(target * eased)));
+          if (k < 1) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }
+      timer = setTimeout(leave, 6000);
+    }
+    // Start once the fonts are ready (or after 1.2 s at most), and only while the tab is visible
+    var ready = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+    var cap = new Promise(function (r) { setTimeout(r, 1200); });
+    Promise.race([ready, cap]).then(function () {
+      if (document.hidden) document.addEventListener('visibilitychange', function once() { if (!document.hidden) { document.removeEventListener('visibilitychange', once); begin(); } });
+      else begin();
+    });
   }
 })();
