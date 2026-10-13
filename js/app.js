@@ -14,12 +14,13 @@
   S.goals = S.goals || [];
   if (S.isSample && !S.incomePlan) { S = HS.buildSample(new Date()); HS.save(S); }
   S.incomePlan = S.incomePlan || [];
+  if (S.isSample && !S.holdings.some(function (h) { return h.returnPct != null; })) { S = HS.buildSample(new Date()); HS.save(S); }
   S.settings = S.settings || { tfsaAnnualLimit: 36000, tfsaLifetimeLimit: 500000 };
   if (S.settings.inflation == null) S.settings.inflation = 5;
 
   var TODAY = new Date();
   var THIS_MONTH = TODAY.getFullYear() + '-' + String(TODAY.getMonth() + 1).padStart(2, '0');
-  var UI = { tab: 'overview', member: 'all', month: THIS_MONTH, q: '', cat: '', showTransfers: false, applySimilar: true, extra: 2000, method: 'avalanche', growthMonths: 12, growthView: 'together', openFunds: {}, goalChart: null, goalType: 'short', pendingBank: null, pendingHoldings: null, confirm: null };
+  var UI = { tab: 'overview', member: 'all', month: THIS_MONTH, q: '', cat: '', showTransfers: false, applySimilar: true, extra: 2000, method: 'avalanche', growthMonths: 12, growthView: 'together', openFunds: {}, openLump: {}, goalChart: null, goalType: 'short', pendingBank: null, pendingHoldings: null, confirm: null };
   try {
     var saved = JSON.parse(localStorage.getItem('clancapital.ui') || '{}');
     if (saved.tab) UI.tab = saved.tab;
@@ -463,7 +464,8 @@
       '<div class="kpi hero"><span class="eyebrow">Total assets</span><span class="value">' + fmtR(total) + '</span><span class="sub">' + hs.length + ' holdings</span></div>' +
       '<div class="kpi"><span class="eyebrow">Invested excl. property</span><span class="value">' + fmtR(exProp) + '</span></div>' +
       '<div class="kpi"><span class="eyebrow">Retirement savings</span><span class="value">' + fmtR(retire) + '</span><span class="sub">RA, pension and provident funds</span></div>' +
-      '<div class="kpi"><span class="eyebrow">Monthly contributions</span><span class="value">' + fmtR(monthly) + '</span></div></div>';
+      '<div class="kpi"><span class="eyebrow">Monthly contributions</span><span class="value">' + fmtR(monthly) + '</span></div>' +
+      '<div class="kpi"><span class="eyebrow">Projected in 10 years</span><span class="value">' + fmtR(sum(hs, function (h) { return projectHolding(h, 120); }), { compact: true }) + '</span><span class="sub">At each holding\'s return rate, with monthly contributions</span></div></div>';
 
     html += '<div class="grid-2"><section class="panel"><header><h3>Asset allocation</h3><span class="muted small">Share of total assets</span></header>' +
       (classes.length ? '<div class="barlist">' + classes.map(function (c) {
@@ -487,17 +489,22 @@
     html += growthPanel(hs);
     html += '<section class="panel"><header><h3>Holdings</h3><span class="muted small">Update values whenever you get a statement</span></header>';
     if (hs.length) {
-      html += '<div class="table-wrap"><table><thead><tr><th>Holding</th><th>Provider</th><th>Type</th><th>Asset class</th><th>Owner</th><th class="num">Value</th><th class="num">Monthly</th><th></th></tr></thead><tbody>' +
-        hs.slice().sort(function (a, b) { return b.value - a.value; }).map(holdingRow).join('') + '</tbody><tfoot><tr><td colspan="5">Total</td><td class="num">' + fmtR(total) + '</td><td class="num">' + fmtR(monthly) + '</td><td></td></tr></tfoot></table></div>';
+      html += '<div class="table-wrap"><table class="holdings-table"><thead><tr><th>Holding</th><th>Provider</th><th>Type</th><th>Asset class</th><th>Owner</th><th class="num">Current value</th><th class="num">Monthly</th><th class="num">Return % a year</th><th class="num">In 10 years</th><th></th></tr></thead><tbody>' +
+        hs.slice().sort(function (a, b) { return b.value - a.value; }).map(holdingRow).join('') + '</tbody><tfoot><tr><td colspan="5">Total</td><td class="num">' + fmtR(total) + '</td><td class="num">' + fmtR(monthly) + '</td><td class="num">' + (total ? (sum(hs, function (h) { return (holdingReturn(h) || 0) * h.value; }) / total).toFixed(1) + '%' : '–') + '</td><td class="num">' + fmtR(sum(hs, function (h) { return projectHolding(h, 120); })) + '</td><td></td></tr></tfoot></table></div>';
     }
-    html += '<form id="holding-form" class="form-row" style="margin-top:16px">' +
+    html += '<form id="holding-form" style="margin-top:16px;display:grid;gap:10px"><div class="form-row">' +
       '<div class="field wide"><label for="hf-name">Holding</label><input id="hf-name" required placeholder="e.g. Satrix Top 40 ETF"></div>' +
       '<div class="field"><label for="hf-provider">Provider</label><input id="hf-provider" placeholder="e.g. EasyEquities"></div>' +
       '<div class="field"><label for="hf-type">Type</label><select id="hf-type">' + listOptions(HS.HOLDING_TYPES, 'Unit trust') + '</select></div>' +
       '<div class="field"><label for="hf-class">Asset class</label><select id="hf-class">' + listOptions(HS.ASSET_CLASSES, 'Local equity') + '</select></div>' +
       '<div class="field"><label for="hf-member">Owner</label><select id="hf-member">' + memberOptions(UI.member === 'all' ? 'joint' : UI.member) + '</select></div>' +
-      '<div class="field narrow"><label for="hf-value">Value (R)</label><input id="hf-value" type="number" min="0" step="100" required></div>' +
-      '<button class="btn" type="submit">Add holding</button></form>' +
+      '</div><div class="form-row">' +
+      '<div class="field"><label for="hf-value">Current value (R)</label><input id="hf-value" type="number" min="0" step="100" required></div>' +
+      '<div class="field"><label for="hf-monthly">Monthly contribution (R)</label><input id="hf-monthly" type="number" min="0" step="50" value="0"></div>' +
+      '<div class="field narrow"><label for="hf-return">Return % a year</label><input id="hf-return" type="number" min="-50" max="100" step="0.1" placeholder="e.g. 10"></div>' +
+      '<div class="field"><label for="hf-lump">Lump sum added now (R)</label><input id="hf-lump" type="number" min="0" step="100" value="0"></div>' +
+      '<button class="btn" type="submit">Add holding</button></div>' +
+      '<p class="small muted">Return % is the fund\'s current or expected yearly return after fees, from your fund fact sheet. A lump sum is added on top of the current value and counts as money you put in, not growth.</p></form>' +
       '<p class="small muted" style="margin-top:10px">Have a statement from your platform? <a href="#data" data-goto="data">Import an investment sheet</a>.</p></section>';
     return html;
   }
@@ -542,6 +549,20 @@
     if (hasFunds(h)) return h.funds.map(function (f) { return { assetClass: f.assetClass, value: +f.value || 0 }; });
     return [{ assetClass: h.assetClass, value: +h.value || 0 }];
   }
+  // Yearly return for a holding: its own rate, or the value-weighted rate of its funds
+  function holdingReturn(h) {
+    if (hasFunds(h)) {
+      var known = h.funds.filter(function (f) { return f.returnPct != null && f.returnPct !== ''; });
+      var v = sum(known, function (f) { return +f.value || 0; });
+      if (known.length && v > 0) return sum(known, function (f) { return (+f.value || 0) * +f.returnPct; }) / v;
+    }
+    return h.returnPct == null || h.returnPct === '' ? null : +h.returnPct;
+  }
+  function projectHolding(h, months) {
+    var r = holdingReturn(h);
+    if (r == null) return +h.value || 0;
+    return HS.fv(+h.value || 0, +h.monthly || 0, r / 100 / 12, months);
+  }
   function syncFunds(h) {
     if (!hasFunds(h)) return;
     h.value = sum(h.funds, function (f) { return +f.value || 0; });
@@ -549,27 +570,43 @@
     touchHistory(h);
   }
   function holdingRow(h) {
-    var multi = hasFunds(h), open = UI.openFunds[h.id];
-    var row = '<tr data-holding="' + h.id + '"><td>' + esc(h.name) +
-      (h.type === 'Property' ? '' : '<div><button type="button" class="linkish" data-toggle-funds="' + h.id + '" aria-expanded="' + !!open + '">' + (open ? '▾ ' : '▸ ') + (multi ? h.funds.length + ' funds' : 'Split into funds') + '</button></div>') + '</td>' +
+    var multi = hasFunds(h), open = UI.openFunds[h.id], openL = UI.openLump[h.id];
+    var r = holdingReturn(h);
+    var row = '<tr data-holding="' + h.id + '"><td>' + esc(h.name) + '<div class="btn-row" style="gap:10px">' +
+      (h.type === 'Property' ? '' : '<button type="button" class="linkish" data-toggle-funds="' + h.id + '" aria-expanded="' + !!open + '">' + (open ? '▾ ' : '▸ ') + (multi ? h.funds.length + ' funds' : 'Split into funds') + '</button>') +
+      (h.type === 'Property' ? '' : '<button type="button" class="linkish" data-toggle-lump="' + h.id + '" aria-expanded="' + !!openL + '">＋ Lump sum</button>') + '</div></td>' +
       '<td>' + esc(h.provider) + '</td><td><select data-field="type">' + listOptions(HS.HOLDING_TYPES, h.type) + '</select></td>' +
       '<td>' + (multi ? '<span class="muted">Mixed · see funds</span>' : '<select data-field="assetClass">' + listOptions(HS.ASSET_CLASSES, h.assetClass) + '</select>') + '</td>' +
       '<td><select data-field="member">' + memberOptions(h.member) + '</select></td>' +
       '<td class="num">' + (multi ? '<strong>' + fmtR(h.value) + '</strong>' : '<input type="number" min="0" step="100" data-field="value" value="' + h.value + '">') + '</td>' +
       '<td class="num"><input type="number" min="0" step="50" data-field="monthly" value="' + (h.monthly || 0) + '"></td>' +
+      '<td class="num">' + (multi ? '<span title="Weighted by fund value">' + (r == null ? '–' : r.toFixed(1) + '%') + '</span>' : '<input type="number" min="-50" max="100" step="0.1" data-field="returnPct" value="' + (h.returnPct == null ? '' : h.returnPct) + '" placeholder="–" style="width:80px">') + '</td>' +
+      '<td class="num">' + (r == null ? '<span class="muted small">Add a return %</span>' : fmtR(projectHolding(h, 120))) + '</td>' +
       '<td><button class="btn ghost" data-del-holding="' + h.id + '" aria-label="Remove">✕</button></td></tr>';
+    if (openL) {
+      var lumps = (h.lumpSums || []).slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+      row += '<tr class="fund-row"><td colspan="10"><div class="fund-box"><p class="small muted">Add a once-off amount to ' + esc(h.name) + '. It is added to the value and counted as money you put in, so it does not show as growth.</p>' +
+        '<div class="form-row"><div class="field narrow"><label for="ls-' + h.id + '">Lump sum (R)</label><input id="ls-' + h.id + '" type="number" min="0" step="100"></div>' +
+        '<div class="field narrow"><label for="ld-' + h.id + '">Date</label><input id="ld-' + h.id + '" type="date" value="' + TODAY.toISOString().slice(0, 10) + '" max="' + TODAY.toISOString().slice(0, 10) + '"></div>' +
+        (multi ? '<div class="field"><label for="lf-' + h.id + '">Into fund</label><select id="lf-' + h.id + '">' + h.funds.map(function (f) { return '<option value="' + f.id + '">' + esc(f.name) + '</option>'; }).join('') + '</select></div>' : '') +
+        '<button type="button" class="btn secondary" data-add-lump="' + h.id + '">Add lump sum</button></div>' +
+        (lumps.length ? '<div class="small muted">Previous lump sums: ' + lumps.map(function (l) { return fmtR(l.amount) + ' on ' + l.date; }).join(' · ') + '</div>' : '') +
+        '</div></td></tr>';
+    }
     if (!open) return row;
     var funds = h.funds || [];
-    row += '<tr class="fund-row"><td colspan="8"><div class="fund-box"><p class="small muted">' + (multi ? 'The account value is the total of its funds. Update each fund from your statement.' : 'Add each fund in this account. Once you add funds, the account value becomes their total.') + '</p>' +
-      (funds.length ? '<table><thead><tr><th>Fund</th><th>Asset class</th><th class="num">Value</th><th class="num">Share</th><th></th></tr></thead><tbody>' +
+    row += '<tr class="fund-row"><td colspan="10"><div class="fund-box"><p class="small muted">' + (multi ? 'The account value is the total of its funds. Update each fund from your statement.' : 'Add each fund in this account. Once you add funds, the account value becomes their total.') + '</p>' +
+      (funds.length ? '<table><thead><tr><th>Fund</th><th>Asset class</th><th class="num">Value</th><th class="num">Return %</th><th class="num">Share</th><th></th></tr></thead><tbody>' +
         funds.map(function (f) {
           return '<tr data-fund="' + f.id + '" data-parent="' + h.id + '"><td><input data-ffield="name" value="' + esc(f.name) + '" aria-label="Fund name"></td><td><select data-ffield="assetClass">' + listOptions(HS.ASSET_CLASSES, f.assetClass) + '</select></td>' +
-            '<td class="num"><input type="number" min="0" step="100" data-ffield="value" value="' + f.value + '"></td><td class="num">' + pct(h.value ? f.value / h.value : NaN) + '</td>' +
+            '<td class="num"><input type="number" min="0" step="100" data-ffield="value" value="' + f.value + '"></td>' +
+            '<td class="num"><input type="number" min="-50" max="100" step="0.1" data-ffield="returnPct" value="' + (f.returnPct == null ? '' : f.returnPct) + '" placeholder="–" style="width:80px"></td><td class="num">' + pct(h.value ? f.value / h.value : NaN) + '</td>' +
             '<td><button class="btn ghost" data-del-fund="' + f.id + '" data-parent="' + h.id + '" aria-label="Remove fund">✕</button></td></tr>';
         }).join('') + '</tbody></table>' : '') +
       '<div class="form-row" style="margin-top:10px"><div class="field wide"><label for="fn-' + h.id + '">Fund</label><input id="fn-' + h.id + '" placeholder="e.g. Allan Gray Equity Fund"></div>' +
       '<div class="field"><label for="fc-' + h.id + '">Asset class</label><select id="fc-' + h.id + '">' + listOptions(HS.ASSET_CLASSES, HS.guessAssetClass(h.name) === 'Other' ? 'Local equity' : HS.guessAssetClass(h.name)) + '</select></div>' +
       '<div class="field narrow"><label for="fv-' + h.id + '">Value (R)</label><input id="fv-' + h.id + '" type="number" min="0" step="100"></div>' +
+      '<div class="field narrow"><label for="fr-' + h.id + '">Return %</label><input id="fr-' + h.id + '" type="number" min="-50" max="100" step="0.1"></div>' +
       '<button type="button" class="btn secondary" data-add-fund="' + h.id + '">Add fund</button></div></div></td></tr>';
     return row;
   }
@@ -589,7 +626,9 @@
   }
   function touchHistory(h) {
     h.history = (h.history || []).filter(function (x) { return x.month !== THIS_MONTH; });
-    h.history.push({ month: THIS_MONTH, value: +h.value || 0, contrib: +h.monthly || 0 });
+    // Money added this month = monthly contribution + any lump sums dated this month
+    var lumps = sum((h.lumpSums || []).filter(function (l) { return String(l.date).slice(0, 7) === THIS_MONTH; }), function (l) { return +l.amount || 0; });
+    h.history.push({ month: THIS_MONTH, value: +h.value || 0, contrib: (+h.monthly || 0) + lumps });
   }
   function growthTypes() {
     var seen = {};
@@ -1030,13 +1069,27 @@
     if (d.goaltype) { UI.goalType = d.goaltype; render(); return; }
     if (d.delGoal) { S.goals = S.goals.filter(function (x) { return x.id !== d.delGoal; }); persist(); render(); toast('Goal deleted'); return; }
     if (d.delEntry) { S.entries = S.entries.filter(function (x) { return x.id !== d.delEntry; }); persist(); render(); toast('Transaction deleted'); return; }
+    if (d.toggleLump) { UI.openLump[d.toggleLump] = !UI.openLump[d.toggleLump]; render(); return; }
+    if (d.addLump) {
+      var lh = S.holdings.find(function (x) { return x.id === d.addLump; });
+      var amt = +$('#ls-' + d.addLump).value || 0;
+      if (!lh || amt <= 0) { toast('Enter the lump sum amount'); return; }
+      var ldate = $('#ld-' + d.addLump).value || TODAY.toISOString().slice(0, 10);
+      var fsel = $('#lf-' + d.addLump);
+      lh.lumpSums = lh.lumpSums || [];
+      lh.lumpSums.push({ date: ldate, amount: amt, fundId: fsel ? fsel.value : null });
+      if (fsel) { var tf = lh.funds.find(function (f) { return f.id === fsel.value; }); if (tf) tf.value = (+tf.value || 0) + amt; syncFunds(lh); }
+      else { lh.value = (+lh.value || 0) + amt; touchHistory(lh); }
+      persist(); render(); toast(fmtR(amt) + ' added to ' + lh.name); return;
+    }
     if (d.toggleFunds) { UI.openFunds[d.toggleFunds] = !UI.openFunds[d.toggleFunds]; render(); return; }
     if (d.addFund) {
       var ph = S.holdings.find(function (x) { return x.id === d.addFund; });
       var fname = ($('#fn-' + d.addFund).value || '').trim(), fval = +$('#fv-' + d.addFund).value || 0;
       if (!ph || !fname) { toast('Enter a fund name'); return; }
       ph.funds = ph.funds || [];
-      ph.funds.push({ id: HS.uid(), name: fname, assetClass: $('#fc-' + d.addFund).value, value: fval });
+      var frv = $('#fr-' + d.addFund).value;
+      ph.funds.push({ id: HS.uid(), name: fname, assetClass: $('#fc-' + d.addFund).value, value: fval, returnPct: frv === '' ? null : +frv });
       syncFunds(ph); persist(); render(); toast('Fund added'); return;
     }
     if (d.delFund) {
@@ -1124,13 +1177,18 @@
     if ((row = el.closest('[data-fund]')) && el.dataset.ffield) {
       var fh = S.holdings.find(function (x) { return x.id === row.dataset.parent; });
       var fd = fh && fh.funds.find(function (x) { return x.id === row.dataset.fund; });
-      if (fd) { fd[el.dataset.ffield] = el.type === 'number' ? (+el.value || 0) : el.value; syncFunds(fh); persist(); render(); }
+      if (fd) {
+        if (el.dataset.ffield === 'returnPct') fd.returnPct = el.value === '' ? null : +el.value;
+        else fd[el.dataset.ffield] = el.type === 'number' ? (+el.value || 0) : el.value;
+        syncFunds(fh); persist(); render();
+      }
       return;
     }
     if ((row = el.closest('[data-holding]')) && el.dataset.field) {
       var h = S.holdings.find(function (x) { return x.id === row.dataset.holding; });
       if (h) {
-        h[el.dataset.field] = el.type === 'number' ? (+el.value || 0) : el.value;
+        if (el.dataset.field === 'returnPct') h.returnPct = el.value === '' ? null : +el.value;
+        else h[el.dataset.field] = el.type === 'number' ? (+el.value || 0) : el.value;
         if (el.dataset.field === 'value' || el.dataset.field === 'monthly') touchHistory(h);
         persist(); render();
       }
@@ -1208,7 +1266,10 @@
       S.budgets.push({ id: HS.uid(), category: $('#bf-cat').value, member: $('#bf-member').value, amount: +$('#bf-amount').value || 0 });
       persist(); render(); toast('Budget line added');
     } else if (f.id === 'holding-form') {
-      var nh2 = { id: HS.uid(), name: $('#hf-name').value.trim(), provider: $('#hf-provider').value.trim(), type: $('#hf-type').value, assetClass: $('#hf-class').value, member: $('#hf-member').value, value: +$('#hf-value').value || 0, monthly: 0 };
+      var lump = Math.max(0, +$('#hf-lump').value || 0);
+      var rv = $('#hf-return').value;
+      var nh2 = { id: HS.uid(), name: $('#hf-name').value.trim(), provider: $('#hf-provider').value.trim(), type: $('#hf-type').value, assetClass: $('#hf-class').value, member: $('#hf-member').value,
+        value: (+$('#hf-value').value || 0) + lump, monthly: Math.max(0, +$('#hf-monthly').value || 0), returnPct: rv === '' ? null : +rv, lumpSums: lump ? [{ date: TODAY.toISOString().slice(0, 10), amount: lump }] : [] };
       touchHistory(nh2); S.holdings.push(nh2);
       persist(); render(); toast('Holding added');
     } else if (f.id === 'debt-form') {

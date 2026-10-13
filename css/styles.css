@@ -235,3 +235,8 @@ label.chip input { margin: 0; }
 tr.fund-row > td { background: var(--surface-2); padding: 0; }
 .fund-box { padding: 12px 14px 14px 22px; border-left: 3px solid var(--accent-soft); display: grid; gap: 8px; }
 .fund-box td input:not([type="number"]) { min-width: 200px; }
+
+/* Holdings table: scroll sideways on narrow screens instead of squeezing the controls */
+.holdings-table { min-width: 1120px; }
+.holdings-table td select { min-width: 120px; }
+.holdings-table td:first-child { min-width: 190px; }

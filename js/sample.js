@@ -95,32 +95,35 @@
     ].filter(function (b) { return b.amount > 0; });
 
     var holdings = [
-      { id: 'h-tfsa', name: 'Satrix MSCI World ETF', provider: 'EasyEquities', type: 'TFSA', assetClass: 'Offshore equity', member: 'm1', value: 142300, monthly: 3000, taxYearContrib: 24000, lifetimeContrib: 118000 },
-      { id: 'h-ra', name: 'Allan Gray Balanced Fund', provider: 'Allan Gray', type: 'Retirement annuity', assetClass: 'Balanced / multi-asset', member: 'm2', value: 385600, monthly: 2500 },
-      { id: 'h-gepf', name: 'Government Employees Pension Fund', provider: 'GEPF', type: 'Pension / provident fund', assetClass: 'Balanced / multi-asset', member: 'm2', value: 612000, monthly: 0 },
-      { id: 'h-ut', name: 'Allan Gray unit trust account', provider: 'Allan Gray', type: 'Unit trust', assetClass: 'Mixed', member: 'joint', value: 96400, monthly: 1000,
+      { id: 'h-tfsa', name: 'Satrix MSCI World ETF', provider: 'EasyEquities', type: 'TFSA', assetClass: 'Offshore equity', member: 'm1', value: 142300, monthly: 3000, returnPct: 12.5, taxYearContrib: 24000, lifetimeContrib: 118000 },
+      { id: 'h-ra', name: 'Allan Gray Balanced Fund', provider: 'Allan Gray', type: 'Retirement annuity', assetClass: 'Balanced / multi-asset', member: 'm2', value: 385600, monthly: 2500, returnPct: 10.2 },
+      { id: 'h-gepf', name: 'Government Employees Pension Fund', provider: 'GEPF', type: 'Pension / provident fund', assetClass: 'Balanced / multi-asset', member: 'm2', value: 612000, monthly: 3400, returnPct: 9.5 },
+      { id: 'h-ut', name: 'Allan Gray unit trust account', provider: 'Allan Gray', type: 'Unit trust', assetClass: 'Mixed', member: 'joint', value: 96400, monthly: 1000, returnPct: 10,
         funds: [
-          { id: 'f1', name: 'Allan Gray Equity Fund', assetClass: 'Local equity', value: 32000 },
-          { id: 'f2', name: 'Allan Gray Balanced Fund', assetClass: 'Balanced / multi-asset', value: 24000 },
-          { id: 'f3', name: 'Orbis Global Equity Fund', assetClass: 'Offshore equity', value: 22000 },
-          { id: 'f4', name: 'Allan Gray Bond Fund', assetClass: 'Bonds', value: 10400 },
-          { id: 'f5', name: 'Allan Gray Money Market Fund', assetClass: 'Cash', value: 8000 }
+          { id: 'f1', name: 'Allan Gray Equity Fund', assetClass: 'Local equity', value: 32000, returnPct: 11.4 },
+          { id: 'f2', name: 'Allan Gray Balanced Fund', assetClass: 'Balanced / multi-asset', value: 24000, returnPct: 10.1 },
+          { id: 'f3', name: 'Orbis Global Equity Fund', assetClass: 'Offshore equity', value: 22000, returnPct: 13.2 },
+          { id: 'f4', name: 'Allan Gray Bond Fund', assetClass: 'Bonds', value: 10400, returnPct: 8.6 },
+          { id: 'f5', name: 'Allan Gray Money Market Fund', assetClass: 'Cash', value: 8000, returnPct: 7.6 }
         ] },
-      { id: 'h-shares', name: 'Shares account', provider: 'EasyEquities', type: 'Shares / ETFs', assetClass: 'Local equity', member: 'm1', value: 48250, monthly: 0 },
-      { id: 'h-cash', name: 'Emergency fund', provider: 'Capitec', type: 'Cash & money market', assetClass: 'Cash', member: 'joint', value: 38500, monthly: 0 },
-      { id: 'h-home', name: 'Family home, Garsfontein', provider: 'Own valuation', type: 'Property', assetClass: 'Property', member: 'joint', value: 1850000, monthly: 0 }
+      { id: 'h-shares', name: 'Shares account', provider: 'EasyEquities', type: 'Shares / ETFs', assetClass: 'Local equity', member: 'm1', value: 48250, monthly: 0, returnPct: 11, lumpSums: [{ date: HS.addMonths(thisMonth, -4) + '-15', amount: 5000 }] },
+      { id: 'h-cash', name: 'Emergency fund', provider: 'Capitec', type: 'Cash & money market', assetClass: 'Cash', member: 'joint', value: 38500, monthly: 0, returnPct: 7.5 },
+      { id: 'h-home', name: 'Family home, Garsfontein', provider: 'Own valuation', type: 'Property', assetClass: 'Property', member: 'joint', value: 1850000, monthly: 0, returnPct: 5 }
     ];
 
     // Twelve months of value history per holding, for the growth tracker.
     // Monthly market return per asset class (rough long-run averages, with noise).
     var drift = { 'Mixed': 0.0075, 'Offshore equity': 0.009, 'Local equity': 0.008, 'Balanced / multi-asset': 0.0075, 'Cash': 0.006, 'Property': 0.004, 'Bonds': 0.007, 'Other': 0.005 };
     holdings.forEach(function (h) {
-      var v = h.value, hist = [{ month: HS.addMonths(thisMonth, -1), value: Math.round(v), contrib: h.monthly }];
+      // Money added in a month = monthly contribution + any lump sum dated that month
+      var added = function (m) { return h.monthly + (h.lumpSums || []).filter(function (l) { return l.date.slice(0, 7) === m; }).reduce(function (a, l) { return a + l.amount; }, 0); };
+      var m0 = HS.addMonths(thisMonth, -1);
+      var v = h.value, hist = [{ month: m0, value: Math.round(v), contrib: added(m0) }];
       for (var i = 2; i <= 13; i++) {
         var g = drift[h.assetClass] + (h.assetClass === 'Cash' || h.assetClass === 'Property' ? 0 : (rnd() - 0.45) * 0.05);
-        if (h.type === 'Pension / provident fund') v = (v - 3400) / (1 + g); // employer contributions via payroll
-        else v = (v - h.monthly) / (1 + g);
-        hist.unshift({ month: HS.addMonths(thisMonth, -i), value: Math.round(v), contrib: h.type === 'Pension / provident fund' ? 3400 : h.monthly });
+        v = (v - hist[0].contrib) / (1 + g);
+        var mi = HS.addMonths(thisMonth, -i);
+        hist.unshift({ month: mi, value: Math.round(v), contrib: added(mi) });
       }
       h.history = hist;
     });
