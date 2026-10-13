@@ -18,6 +18,8 @@
   if (S.isSample && !S.holdings.some(function (h) { return h.returnPct != null; })) { S = HS.buildSample(new Date()); HS.save(S); }
   S.settings = S.settings || { tfsaAnnualLimit: 36000, tfsaLifetimeLimit: 500000 };
   if (S.settings.inflation == null) S.settings.inflation = 5;
+  if (S.settings.drawdown == null) S.settings.drawdown = 4;
+  if (S.isSample && !S.goals.some(function (g) { return g.monthlyNeed; })) { S = HS.buildSample(new Date()); HS.save(S); }
 
   var TODAY = new Date();
   var THIS_MONTH = TODAY.getFullYear() + '-' + String(TODAY.getMonth() + 1).padStart(2, '0');
@@ -739,8 +741,13 @@
     if (g.type === 'retirement' && +g.retireAge > 0 && +g.currentAge > 0) return HS.addMonths(THIS_MONTH, Math.max(0, Math.round((+g.retireAge - +g.currentAge) * 12)));
     return g.targetDate;
   }
+  // Income goals: the capital needed to pay a monthly income at the drawdown rate
+  // (4% a year means capital = monthly need × 12 ÷ 0.04 = monthly need × 300), in today's money
+  function usesNeed(g) { return (g.type === 'retirement' || g.type === 'long') && +g.monthlyNeed > 0; }
+  function needTarget(g) { return +g.monthlyNeed * 12 / ((+S.settings.drawdown || 4) / 100); }
   function goalProjection(g) {
     g = Object.assign({}, g, { targetDate: goalDate(g) });
+    if (usesNeed(g)) { g.target = needTarget(g); g.todayMoney = true; }
     return HS.projectGoal(g, { current: goalCurrent(g), thisMonth: THIS_MONTH, inflation: S.settings.inflation, avgSpend: avgSpendFor(g.member) });
   }
   var STATUS = {
@@ -789,7 +796,10 @@
       '<div class="field"><label for="gf-member">For</label><select id="gf-member">' + memberOptions(UI.member === 'all' ? 'joint' : UI.member) + '</select></div>' +
       (t === 'emergency'
         ? '<div class="field narrow"><label for="gf-cover">Months of spending</label><input id="gf-cover" type="number" min="1" max="24" value="3"></div>'
-        : '<div class="field"><label for="gf-target">Target (R)</label><input id="gf-target" type="number" min="0" step="1000" required></div>') +
+        : (t === 'retirement' || t === 'long'
+          ? '<div class="field"><label for="gf-need">Monthly income needed (R)</label><input id="gf-need" type="number" min="0" step="500" placeholder="e.g. 25000"></div>' +
+            '<div class="field"><label for="gf-target">or Target (R)</label><input id="gf-target" type="number" min="0" step="1000" placeholder="Leave empty if using monthly need"></div>'
+          : '<div class="field"><label for="gf-target">Target (R)</label><input id="gf-target" type="number" min="0" step="1000" required></div>')) +
       (t === 'retirement'
         ? '<div class="field narrow"><label for="gf-age">Current age</label><input id="gf-age" type="number" min="16" max="90" required></div>' +
           '<div class="field narrow"><label for="gf-retire">Retirement age</label><input id="gf-retire" type="number" min="40" max="90" value="65" required></div>'
@@ -802,6 +812,7 @@
       '</div>' +
       (hs.length ? '<div><span class="small muted" style="font-weight:600">Or link holdings that count towards it (replaces "already saved")</span><div class="btn-row" style="margin-top:6px">' +
         hs.map(function (h) { return '<label class="check chip"><input type="checkbox" name="gf-link" value="' + h.id + '"> ' + esc(h.name) + '</label>'; }).join('') + '</div></div>' : '') +
+      (t === 'retirement' || t === 'long' ? '<p class="small muted">Monthly income needed is in today\'s money. The app works out the capital that pays it at a ' + (+S.settings.drawdown || 4) + '% a year drawdown (×' + Math.round(1200 / (+S.settings.drawdown || 4)) + '), grown by inflation to the target date.</p>' : '') +
       '<div><button class="btn" type="submit">Add goal</button></div></form></section>';
     return html;
   }
@@ -821,13 +832,14 @@
       '<div><span class="eyebrow">Monthly now</span><span class="num">' + fmtR(+g.monthly || 0) + '</span></div>' +
       '<div><span class="eyebrow">Monthly needed</span><span class="num">' + fmtR(p.required) + '</span></div>' +
       '</div>' +
-      '<p class="small">' + msg + (g.todayMoney && g.type !== 'emergency' ? ' <span class="muted">Target is ' + fmtR(p.baseTarget) + ' in today\'s money.</span>' : '') + (g.type === 'emergency' ? ' <span class="muted">' + (g.monthsCover || 3) + ' months × ' + fmtR(p.baseTarget / (g.monthsCover || 3)) + ' average spending.</span>' : '') + '</p>' +
-      (g.type === 'retirement' ? retirementIncome(p) : '') +
+      '<p class="small">' + msg + (usesNeed(g) ? ' <span class="muted">Target: ' + fmtR(+g.monthlyNeed) + ' a month × 12 ÷ ' + (+S.settings.drawdown || 4) + '% = ' + fmtR(p.baseTarget) + ' in today\'s money.</span>' : g.todayMoney && g.type !== 'emergency' ? ' <span class="muted">Target is ' + fmtR(p.baseTarget) + ' in today\'s money.</span>' : '') + (g.type === 'emergency' ? ' <span class="muted">' + (g.monthsCover || 3) + ' months × ' + fmtR(p.baseTarget / (g.monthsCover || 3)) + ' average spending.</span>' : '') + '</p>' +
+      (g.type === 'retirement' || usesNeed(g) ? retirementIncome(g, p) : '') +
       (linked.length ? '<p class="small muted">Counts: ' + linked.map(esc).join(', ') + '</p>' : '') +
       '<details><summary class="small">Edit goal</summary><div class="form-row" style="margin-top:10px">' +
       (g.type === 'emergency'
         ? '<div class="field narrow"><label>Months of spending</label><input type="number" min="1" max="24" data-gfield="monthsCover" value="' + (g.monthsCover || 3) + '"></div>'
-        : '<div class="field"><label>Target (R)</label><input type="number" min="0" step="1000" data-gfield="target" value="' + (+g.target || 0) + '"></div>') +
+        : (g.type === 'retirement' || g.type === 'long' ? '<div class="field"><label>Monthly income needed (R, today\'s money)</label><input type="number" min="0" step="500" data-gfield="monthlyNeed" value="' + (+g.monthlyNeed || '') + '" placeholder="Optional"></div>' : '') +
+          (usesNeed(g) ? '' : '<div class="field"><label>Target (R)</label><input type="number" min="0" step="1000" data-gfield="target" value="' + (+g.target || 0) + '"></div>')) +
       (g.type === 'retirement'
         ? '<div class="field narrow"><label>Current age</label><input type="number" min="16" max="90" data-gfield="currentAge" value="' + (g.currentAge || '') + '"></div>' +
           '<div class="field narrow"><label>Retirement age</label><input type="number" min="40" max="90" data-gfield="retireAge" value="' + (g.retireAge || '') + '"></div>'
@@ -840,12 +852,19 @@
       '<button type="button" class="btn ghost" data-del-goal="' + g.id + '">Delete goal</button></div></details></article>';
   }
   // Monthly income the projected capital could pay, using the common 4% yearly drawdown rule
-  function retirementIncome(p) {
-    var monthly = p.projected * 0.04 / 12;
+  function retirementIncome(g, p) {
+    var dd = +S.settings.drawdown || 4;
+    var monthly = p.projected * dd / 100 / 12;
     var today = monthly / Math.pow(1 + (S.settings.inflation || 0) / 100, p.months / 12);
-    return '<div class="stat-list small" style="background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px">' +
-      '<div><span class="muted">Income at retirement (4% a year drawdown)</span><strong class="num">' + fmtR(monthly) + ' /month</strong></div>' +
-      '<div><span class="muted">In today\'s money</span><span class="num">' + fmtR(today) + ' /month</span></div></div>';
+    var need = +g.monthlyNeed || 0;
+    var rows = '<div><span class="muted">Projected income (' + dd + '% a year drawdown)</span><strong class="num">' + fmtR(monthly) + ' /month</strong></div>' +
+      '<div><span class="muted">In today\'s money</span><span class="num">' + fmtR(today) + ' /month</span></div>';
+    if (need > 0) {
+      var ok = today >= need;
+      rows += '<div><span class="muted">Monthly need (today\'s money)</span><span class="num">' + fmtR(need) + ' /month</span></div>' +
+        '<div><span class="muted">' + (ok ? 'Covered' : 'Shortfall') + '</span><span class="pill ' + (ok ? 'good' : today >= need * 0.85 ? 'warn' : 'bad') + '">' + (ok ? '✓ ' + pct(today / need) + ' of need' : '× ' + fmtR(need - today) + ' /month short') + '</span></div>';
+    }
+    return '<div class="stat-list small" style="background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px">' + rows + '</div>';
   }
   viewGoals.after = function () {
     var g = S.goals.find(function (x) { return x.id === UI.goalChart; });
@@ -1012,6 +1031,7 @@
       '<div class="field wide"><label for="set-name">Household name</label><input id="set-name" value="' + esc(S.household.name) + '"></div>' +
       '<div class="field"><label for="set-tfsa">TFSA annual limit (R)</label><input id="set-tfsa" type="number" min="0" step="1000" value="' + S.settings.tfsaAnnualLimit + '"></div>' +
       '<div class="field"><label for="set-tfsa-l">TFSA lifetime limit (R)</label><input id="set-tfsa-l" type="number" min="0" step="1000" value="' + S.settings.tfsaLifetimeLimit + '"></div>' +
+      '<div class="field narrow"><label for="set-dd">Drawdown % a year</label><input id="set-dd" type="number" min="2" max="10" step="0.5" value="' + (S.settings.drawdown || 4) + '"></div>' +
       '<div class="field narrow"><label for="set-infl">Inflation % (for goals)</label><input id="set-infl" type="number" min="0" max="20" step="0.5" value="' + S.settings.inflation + '"></div></div>' +
       '<p class="small muted" style="margin-top:10px">Check the current TFSA limits on the SARS website each tax year.</p></section>';
 
@@ -1113,7 +1133,7 @@
   }
 
   function emptyState() {
-    return { version: 1, isSample: false, household: { name: 'My family' }, members: [{ id: 'm1', name: 'Partner 1', color: 1 }, { id: 'm2', name: 'Partner 2', color: 2 }], entries: [], budgets: [], holdings: [], debts: [], snapshots: [], goals: [], incomePlan: [], learned: {}, settings: { tfsaAnnualLimit: 36000, tfsaLifetimeLimit: 500000, inflation: 5 } };
+    return { version: 1, isSample: false, household: { name: 'My family' }, members: [{ id: 'm1', name: 'Partner 1', color: 1 }, { id: 'm2', name: 'Partner 2', color: 2 }], entries: [], budgets: [], holdings: [], debts: [], snapshots: [], goals: [], incomePlan: [], learned: {}, settings: { tfsaAnnualLimit: 36000, tfsaLifetimeLimit: 500000, inflation: 5, drawdown: 4 } };
   }
 
   // ---------- Events ----------
@@ -1267,6 +1287,7 @@
         g.links = (g.links || []).filter(function (id) { return id !== el.dataset.glink; });
         if (el.checked) g.links.push(el.dataset.glink);
       } else if (el.type === 'checkbox') g[el.dataset.gfield] = el.checked;
+      else if (el.dataset.gfield === 'monthlyNeed') g.monthlyNeed = +el.value || null;
       else g[el.dataset.gfield] = el.type === 'number' ? (+el.value || 0) : el.value;
       persist(); render();
       var open = document.querySelector('[data-goal="' + g.id + '"] details'); if (open) open.open = true;
@@ -1289,6 +1310,7 @@
       case 'mf-type': $('#mf-cat').innerHTML = el.value === 'income' ? categoryOptions('other-income', ['income']) : categoryOptions('groceries', ['spend', 'save']); break;
       case 'goal-chart': UI.goalChart = el.value; render(); break;
       case 'set-infl': S.settings.inflation = +el.value || 0; persist(); break;
+      case 'set-dd': S.settings.drawdown = Math.max(1, +el.value || 4); persist(); break;
       case 'pl-extra': UI.extra = Math.max(0, +el.value || 0); render(); break;
       case 'set-name': S.household.name = el.value.trim() || 'My family'; persist(); renderShell(); break;
       case 'set-tfsa': S.settings.tfsaAnnualLimit = +el.value || 0; persist(); break;
@@ -1343,11 +1365,12 @@
       S.debts.push({ id: HS.uid(), name: $('#df-name').value.trim(), lender: '', type: $('#df-type').value, member: $('#df-member').value, balance: +$('#df-balance').value || 0, rate: +$('#df-rate').value || 0, instalment: +$('#df-inst').value || 0 });
       persist(); render(); toast('Debt added');
     } else if (f.id === 'goal-form') {
+      if ($('#gf-need') && !(+$('#gf-need').value) && !(+$('#gf-target').value)) { toast('Enter a monthly income needed or a target amount'); return; }
       var links = Array.prototype.slice.call(f.querySelectorAll('input[name="gf-link"]:checked')).map(function (x) { return x.value; });
       var t = UI.goalType;
       S.goals.push({
         id: HS.uid(), name: $('#gf-name').value.trim() || HS.GOAL_TYPES[t].name, type: t, member: $('#gf-member').value,
-        target: t === 'emergency' ? 0 : (+$('#gf-target').value || 0), monthsCover: t === 'emergency' ? (+$('#gf-cover').value || 3) : null,
+        target: t === 'emergency' ? 0 : (+$('#gf-target').value || 0), monthlyNeed: $('#gf-need') ? (+$('#gf-need').value || null) : null, monthsCover: t === 'emergency' ? (+$('#gf-cover').value || 3) : null,
         targetDate: $('#gf-date') ? ($('#gf-date').value || HS.addMonths(THIS_MONTH, 24)) : null,
         currentAge: $('#gf-age') ? +$('#gf-age').value : null, retireAge: $('#gf-retire') ? +$('#gf-retire').value : null, monthly: +$('#gf-monthly').value || 0, returnPct: +$('#gf-return').value || 0,
         current: +$('#gf-current').value || 0, links: links, todayMoney: t === 'emergency' ? false : !!($('#gf-today') && $('#gf-today').checked)
