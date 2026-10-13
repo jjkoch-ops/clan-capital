@@ -14,6 +14,7 @@
   S.goals = S.goals || [];
   if (S.isSample && !S.incomePlan) { S = HS.buildSample(new Date()); HS.save(S); }
   S.incomePlan = S.incomePlan || [];
+  if (S.isSample && !S.goals.some(function (g) { return g.retireAge; })) { S = HS.buildSample(new Date()); HS.save(S); }
   if (S.isSample && !S.holdings.some(function (h) { return h.returnPct != null; })) { S = HS.buildSample(new Date()); HS.save(S); }
   S.settings = S.settings || { tfsaAnnualLimit: 36000, tfsaLifetimeLimit: 500000 };
   if (S.settings.inflation == null) S.settings.inflation = 5;
@@ -517,7 +518,7 @@
   }
 
   viewInvestments.after = function () {
-    var hs = growthHoldings(holdingsInScope()).filter(function (h) { return h.history && h.history.length > 1; });
+    var hs = growthHoldings(holdingsInScope()).filter(function (h) { return h.history && h.history.length; });
     if (!hs.length) return;
     var months = growthMonths(hs);
     if (UI.growthView === 'types') {
@@ -536,7 +537,13 @@
     var paidIn = [];
     var running = value[0];
     months.forEach(function (m, i) {
-      if (i > 0) running += sum(hs, function (h) { var e = h.history.find(function (x) { return x.month === m; }); return e ? (+e.contrib || 0) : 0; });
+      // A holding's first month counts its whole value as money added; after that, its contributions
+      if (i > 0) running += sum(hs, function (h) {
+        var e = h.history.find(function (x) { return x.month === m; });
+        if (!e) return 0;
+        var first = h.history.reduce(function (a, x) { return x.month < a ? x.month : a; }, e.month) === m;
+        return first ? (+e.value || 0) : (+e.contrib || 0);
+      });
       paidIn.push(Math.round(running));
     });
     var acc = cssVar('--accent');
@@ -662,7 +669,7 @@
   }
   function growthTypes() {
     var seen = {};
-    holdingsInScope().forEach(function (h) { if (h.type !== 'Property' && h.history && h.history.length > 1) seen[h.type] = true; });
+    holdingsInScope().forEach(function (h) { if (h.type !== 'Property' && h.history && h.history.length) seen[h.type] = true; });
     return HS.HOLDING_TYPES.filter(function (t) { return seen[t]; });
   }
   // Which holdings the growth panel covers: everything except property, or one type
@@ -675,19 +682,19 @@
     var types = growthTypes();
     if (UI.growthView !== 'together' && UI.growthView !== 'types' && types.indexOf(UI.growthView) < 0) UI.growthView = 'together';
     var hs = growthHoldings(allHs);
-    var list = hs.filter(function (h) { return h.history && h.history.length > 1; });
+    var list = hs.filter(function (h) { return h.history && h.history.length; });
     var rows = list.map(function (h) { return { h: h, g: HS.holdingGrowth(h.history, UI.growthMonths) }; }).filter(function (r) { return r.g; });
     var fin = rows.filter(function (r) { return r.h.type !== 'Property'; });
     var gain = sum(fin, function (r) { return r.g.gain; }), added = sum(fin, function (r) { return r.g.added; });
     var start = sum(fin, function (r) { return r.g.start; });
-    var pctAll = start + added / 2 > 0 ? gain / (start + added / 2) : NaN;
+    var pctAll = start + added / 2 > 0 && fin.some(function (r) { return !r.g.isNew; }) ? gain / (start + added / 2) : NaN;
     var seg = '<div class="seg" role="group" aria-label="Period">' + [3, 6, 12].map(function (m) { return '<button type="button" data-growth="' + m + '" aria-pressed="' + (UI.growthMonths === m) + '">' + m + ' months</button>'; }).join('') + '</div>';
     var views = [['together', 'All together'], ['types', 'Compare types']].concat(types.map(function (t) { return [t, t]; }));
     var viewRow = '<div class="btn-row" role="group" aria-label="Show" style="margin-bottom:14px">' + views.map(function (v) {
       return '<button type="button" class="chip" data-gview="' + esc(v[0]) + '" aria-pressed="' + (UI.growthView === v[0]) + '">' + esc(v[1]) + '</button>';
     }).join('') + '</div>';
     var html = '<section class="panel"><header><h3>Growth tracker</h3>' + seg + '</header>' + viewRow;
-    if (!rows.length) return html + '<div class="empty">Growth appears once a holding has values for two or more months. Update values monthly, or import a statement each month.</div></section>';
+    if (!rows.length) return html + '<div class="empty">No investments to track yet. Add a holding below.</div></section>';
     html += '<div class="grid-2"><div><div class="stat-list" style="margin-bottom:12px">' +
       '<div><span class="muted">Market growth' + (UI.growthView === 'together' || UI.growthView === 'types' ? ', excl. property' : ' · ' + esc(UI.growthView)) + '</span><strong class="num ' + (gain >= 0 ? 'delta-up' : 'delta-down') + '">' + (gain >= 0 ? '+' : '') + fmtR(gain) + '</strong></div>' +
       '<div><span class="muted">Money added</span><span class="num">' + fmtR(added) + '</span></div>' +
@@ -698,11 +705,14 @@
         : legendItem('var(--accent)', 'Value') + legendItem('var(--ink-3)', 'Starting value + money added')) + '</div>' +
       '<p class="small muted" style="margin-top:8px">' + (UI.growthView === 'types' ? 'Each line is the total value of one investment type.' : 'The shaded gap between the lines is growth from the market rather than from your own contributions.') + '</p></div>' +
       '<div class="table-wrap"><table><thead><tr><th>Holding</th><th class="num">Added</th><th class="num">Growth</th><th class="num">Return</th></tr></thead><tbody>' +
-      rows.sort(function (a, b) { return (b.g.pct || 0) - (a.g.pct || 0); }).map(function (r) {
+      rows.sort(function (a, b) { return (a.g.isNew - b.g.isNew) || (b.g.pct || 0) - (a.g.pct || 0); }).map(function (r) {
         var p = r.g.pct;
-        return '<tr><td>' + esc(r.h.name) + '<div class="small muted">' + fmtR(r.g.start, { compact: true }) + ' → ' + fmtR(r.g.end, { compact: true }) + '</div></td><td class="num">' + fmtR(r.g.added) + '</td>' +
-          '<td class="num ' + (r.g.gain >= 0 ? 'delta-up' : 'delta-down') + '">' + (r.g.gain >= 0 ? '+' : '') + fmtR(r.g.gain) + '</td>' +
-          '<td class="num">' + (p == null ? '–' : '<span class="pill ' + (p >= 0 ? 'good' : 'bad') + '">' + (p >= 0 ? '▲ ' : '▼ ') + Math.abs(p * 100).toFixed(1) + '%</span>') + '</td></tr>';
+        var sub = r.g.isNew ? 'Added ' + HS.monthLabel(r.g.from, true) + ' · growth shows after your next value update'
+          : r.g.startedInPeriod ? 'Added ' + HS.monthLabel(r.g.from, true) + ' · ' + fmtR(r.g.end, { compact: true }) + ' now'
+          : fmtR(r.g.start, { compact: true }) + ' → ' + fmtR(r.g.end, { compact: true });
+        return '<tr><td>' + esc(r.h.name) + '<div class="small muted">' + sub + '</div></td><td class="num">' + fmtR(r.g.added) + '</td>' +
+          '<td class="num ' + (r.g.isNew ? 'muted' : r.g.gain >= 0 ? 'delta-up' : 'delta-down') + '">' + (r.g.isNew ? '–' : (r.g.gain >= 0 ? '+' : '') + fmtR(r.g.gain)) + '</td>' +
+          '<td class="num">' + (r.g.isNew ? '<span class="pill neutral">New</span>' : p == null ? '–' : '<span class="pill ' + (p >= 0 ? 'good' : 'bad') + '">' + (p >= 0 ? '▲ ' : '▼ ') + Math.abs(p * 100).toFixed(1) + '%</span>') + '</td></tr>';
       }).join('') + '</tbody></table></div></div>';
     return html + '</section>';
   }
@@ -724,7 +734,13 @@
     });
     return used ? tot / used : 0;
   }
+  // Retirement goals can be set by age: the target date follows from current and retirement age
+  function goalDate(g) {
+    if (g.type === 'retirement' && +g.retireAge > 0 && +g.currentAge > 0) return HS.addMonths(THIS_MONTH, Math.max(0, Math.round((+g.retireAge - +g.currentAge) * 12)));
+    return g.targetDate;
+  }
   function goalProjection(g) {
+    g = Object.assign({}, g, { targetDate: goalDate(g) });
     return HS.projectGoal(g, { current: goalCurrent(g), thisMonth: THIS_MONTH, inflation: S.settings.inflation, avgSpend: avgSpendFor(g.member) });
   }
   var STATUS = {
@@ -774,7 +790,10 @@
       (t === 'emergency'
         ? '<div class="field narrow"><label for="gf-cover">Months of spending</label><input id="gf-cover" type="number" min="1" max="24" value="3"></div>'
         : '<div class="field"><label for="gf-target">Target (R)</label><input id="gf-target" type="number" min="0" step="1000" required></div>') +
-      '<div class="field narrow"><label for="gf-date">Target date</label><input id="gf-date" type="month" min="' + THIS_MONTH + '" value="' + HS.addMonths(THIS_MONTH, t === 'short' ? 24 : t === 'emergency' ? 24 : t === 'retirement' ? 300 : 120) + '" required></div>' +
+      (t === 'retirement'
+        ? '<div class="field narrow"><label for="gf-age">Current age</label><input id="gf-age" type="number" min="16" max="90" required></div>' +
+          '<div class="field narrow"><label for="gf-retire">Retirement age</label><input id="gf-retire" type="number" min="40" max="90" value="65" required></div>'
+        : '<div class="field narrow"><label for="gf-date">Target date</label><input id="gf-date" type="month" min="' + THIS_MONTH + '" value="' + HS.addMonths(THIS_MONTH, t === 'short' ? 24 : t === 'emergency' ? 24 : 120) + '" required></div>') +
       '<div class="field narrow"><label for="gf-monthly">Monthly (R)</label><input id="gf-monthly" type="number" min="0" step="100" value="0"></div>' +
       '<div class="field narrow"><label for="gf-return">Return % a year</label><input id="gf-return" type="number" min="0" max="25" step="0.5" value="' + (t === 'short' || t === 'emergency' ? 7 : 10) + '"></div>' +
       '</div><div class="form-row">' +
@@ -794,7 +813,7 @@
     var linked = (g.links || []).map(function (id) { var h = S.holdings.find(function (x) { return x.id === id; }); return h ? h.name : null; }).filter(Boolean);
     var hs = S.holdings.filter(function (h) { return h.type !== 'Property' && (inScope(h.member) || (g.links || []).indexOf(h.id) >= 0); });
     return '<article class="goal" data-goal="' + g.id + '">' +
-      '<div class="goal-head"><div style="min-width:0"><strong>' + esc(g.name) + '</strong><div class="small muted"><span class="dot" style="background:' + memberColor(g.member) + '"></span> ' + esc(memberName(g.member)) + ' · by ' + HS.monthLabel(g.targetDate, true) + ' (' + fmtMonths(p.months) + ')</div></div>' +
+      '<div class="goal-head"><div style="min-width:0"><strong>' + esc(g.name) + '</strong><div class="small muted"><span class="dot" style="background:' + memberColor(g.member) + '"></span> ' + esc(memberName(g.member)) + ' · ' + (g.type === 'retirement' && +g.retireAge ? 'retires at ' + g.retireAge + ' in ' + HS.monthLabel(goalDate(g), true) : 'by ' + HS.monthLabel(goalDate(g), true)) + ' (' + fmtMonths(p.months) + ')</div></div>' +
       '<span class="pill ' + st.cls + '">' + st.icon + ' ' + st.label + '</span></div>' +
       '<div class="barrow"><span class="label num">' + fmtR(p.current) + '</span><span class="amt">' + pct(p.progress) + ' of ' + fmtR(p.target) + '</span><div class="track"><div class="fill ' + st.cls + '" style="width:' + (p.progress * 100).toFixed(1) + '%"></div></div></div>' +
       '<div class="goal-figs">' +
@@ -803,18 +822,30 @@
       '<div><span class="eyebrow">Monthly needed</span><span class="num">' + fmtR(p.required) + '</span></div>' +
       '</div>' +
       '<p class="small">' + msg + (g.todayMoney && g.type !== 'emergency' ? ' <span class="muted">Target is ' + fmtR(p.baseTarget) + ' in today\'s money.</span>' : '') + (g.type === 'emergency' ? ' <span class="muted">' + (g.monthsCover || 3) + ' months × ' + fmtR(p.baseTarget / (g.monthsCover || 3)) + ' average spending.</span>' : '') + '</p>' +
+      (g.type === 'retirement' ? retirementIncome(p) : '') +
       (linked.length ? '<p class="small muted">Counts: ' + linked.map(esc).join(', ') + '</p>' : '') +
       '<details><summary class="small">Edit goal</summary><div class="form-row" style="margin-top:10px">' +
       (g.type === 'emergency'
         ? '<div class="field narrow"><label>Months of spending</label><input type="number" min="1" max="24" data-gfield="monthsCover" value="' + (g.monthsCover || 3) + '"></div>'
         : '<div class="field"><label>Target (R)</label><input type="number" min="0" step="1000" data-gfield="target" value="' + (+g.target || 0) + '"></div>') +
-      '<div class="field narrow"><label>Target date</label><input type="month" data-gfield="targetDate" value="' + g.targetDate + '"></div>' +
+      (g.type === 'retirement'
+        ? '<div class="field narrow"><label>Current age</label><input type="number" min="16" max="90" data-gfield="currentAge" value="' + (g.currentAge || '') + '"></div>' +
+          '<div class="field narrow"><label>Retirement age</label><input type="number" min="40" max="90" data-gfield="retireAge" value="' + (g.retireAge || '') + '"></div>'
+        : '<div class="field narrow"><label>Target date</label><input type="month" data-gfield="targetDate" value="' + g.targetDate + '"></div>') +
       '<div class="field narrow"><label>Monthly (R)</label><input type="number" min="0" step="100" data-gfield="monthly" value="' + (+g.monthly || 0) + '"></div>' +
       '<div class="field narrow"><label>Return %</label><input type="number" min="0" max="25" step="0.5" data-gfield="returnPct" value="' + (+g.returnPct || 0) + '"></div>' +
       (linked.length ? '' : '<div class="field narrow"><label>Saved so far (R)</label><input type="number" min="0" step="100" data-gfield="current" value="' + (+g.current || 0) + '"></div>') +
       '</div><div class="btn-row" style="margin-top:8px">' + hs.map(function (h) { return '<label class="check chip"><input type="checkbox" data-glink="' + h.id + '"' + ((g.links || []).indexOf(h.id) >= 0 ? ' checked' : '') + '> ' + esc(h.name) + '</label>'; }).join('') + '</div>' +
       '<div class="btn-row" style="margin-top:8px">' + (g.type !== 'emergency' ? '<label class="check"><input type="checkbox" data-gfield="todayMoney"' + (g.todayMoney ? ' checked' : '') + '> Target in today\'s money</label>' : '') +
       '<button type="button" class="btn ghost" data-del-goal="' + g.id + '">Delete goal</button></div></details></article>';
+  }
+  // Monthly income the projected capital could pay, using the common 4% yearly drawdown rule
+  function retirementIncome(p) {
+    var monthly = p.projected * 0.04 / 12;
+    var today = monthly / Math.pow(1 + (S.settings.inflation || 0) / 100, p.months / 12);
+    return '<div class="stat-list small" style="background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px">' +
+      '<div><span class="muted">Income at retirement (4% a year drawdown)</span><strong class="num">' + fmtR(monthly) + ' /month</strong></div>' +
+      '<div><span class="muted">In today\'s money</span><span class="num">' + fmtR(today) + ' /month</span></div></div>';
   }
   viewGoals.after = function () {
     var g = S.goals.find(function (x) { return x.id === UI.goalChart; });
@@ -1317,7 +1348,8 @@
       S.goals.push({
         id: HS.uid(), name: $('#gf-name').value.trim() || HS.GOAL_TYPES[t].name, type: t, member: $('#gf-member').value,
         target: t === 'emergency' ? 0 : (+$('#gf-target').value || 0), monthsCover: t === 'emergency' ? (+$('#gf-cover').value || 3) : null,
-        targetDate: $('#gf-date').value || HS.addMonths(THIS_MONTH, 24), monthly: +$('#gf-monthly').value || 0, returnPct: +$('#gf-return').value || 0,
+        targetDate: $('#gf-date') ? ($('#gf-date').value || HS.addMonths(THIS_MONTH, 24)) : null,
+        currentAge: $('#gf-age') ? +$('#gf-age').value : null, retireAge: $('#gf-retire') ? +$('#gf-retire').value : null, monthly: +$('#gf-monthly').value || 0, returnPct: +$('#gf-return').value || 0,
         current: +$('#gf-current').value || 0, links: links, todayMoney: t === 'emergency' ? false : !!($('#gf-today') && $('#gf-today').checked)
       });
       persist(); render(); toast('Goal added');

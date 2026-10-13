@@ -64,16 +64,23 @@
   // Growth of one holding over its stored history.
   // Market growth = change in value − money added.
   function growth(history, monthsBack) {
-    if (!history || history.length < 2) return null;
+    if (!history || !history.length) return null;
     var h = history.slice().sort(function (a, b) { return a.month < b.month ? -1 : 1; });
     var end = h[h.length - 1];
-    var startIdx = Math.max(0, h.length - 1 - monthsBack);
-    var start = h[startIdx];
-    var added = 0;
-    for (var i = startIdx + 1; i < h.length; i++) added += +h[i].contrib || 0;
-    var gain = end.value - start.value - added;
-    var base = start.value + added / 2; // simple Dietz approximation
-    return { start: start.value, end: end.value, added: added, gain: gain, pct: base > 0 ? gain / base : null, months: h.length - 1 - startIdx, from: start.month, to: end.month };
+    var added = 0, startValue, from, i;
+    if (h.length - 1 < monthsBack) {
+      // Holding started inside the period: it opened at zero, and its first value is money added, not growth
+      startValue = 0; from = h[0].month;
+      added = +h[0].value || 0;
+      for (i = 1; i < h.length; i++) added += +h[i].contrib || 0;
+    } else {
+      var startIdx = h.length - 1 - monthsBack;
+      startValue = h[startIdx].value; from = h[startIdx].month;
+      for (i = startIdx + 1; i < h.length; i++) added += +h[i].contrib || 0;
+    }
+    var gain = end.value - startValue - added;
+    var base = startValue + added / 2; // simple Dietz approximation
+    return { start: startValue, end: end.value, added: added, gain: gain, pct: base > 0 && h.length > 1 ? gain / base : null, isNew: h.length === 1, startedInPeriod: startValue === 0 && h.length - 1 < monthsBack, from: from, to: end.month };
   }
 
   var api = { GOAL_TYPES: GOAL_TYPES, monthsBetween: monthsBetween, fv: fv, requiredMonthly: requiredMonthly, projectGoal: project, holdingGrowth: growth };

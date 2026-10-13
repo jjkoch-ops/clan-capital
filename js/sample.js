@@ -130,8 +130,8 @@
 
     var goals = [
       { id: HS.uid(), name: 'Emergency fund', type: 'emergency', member: 'joint', monthsCover: 3, links: ['h-cash'], current: 0, monthly: 2500, returnPct: 7, targetDate: HS.addMonths(thisMonth, 36), todayMoney: false },
-      { id: HS.uid(), name: "Lerato's retirement", type: 'retirement', member: 'm2', target: 5500000, links: ['h-ra', 'h-gepf'], current: 0, monthly: 5900, returnPct: 10, targetDate: '2052-06', todayMoney: true },
-      { id: HS.uid(), name: "Thabo's retirement", type: 'retirement', member: 'm1', target: 3000000, links: ['h-tfsa', 'h-shares'], current: 0, monthly: 3000, returnPct: 10, targetDate: '2049-03', todayMoney: true },
+      { id: HS.uid(), name: "Lerato's retirement", type: 'retirement', member: 'm2', target: 5500000, links: ['h-ra', 'h-gepf'], current: 0, monthly: 5900, returnPct: 10, currentAge: 38, retireAge: 63, targetDate: '2051-10', todayMoney: true },
+      { id: HS.uid(), name: "Thabo's retirement", type: 'retirement', member: 'm1', target: 3000000, links: ['h-tfsa', 'h-shares'], current: 0, monthly: 3000, returnPct: 10, currentAge: 41, retireAge: 63, targetDate: '2048-10', todayMoney: true },
       { id: HS.uid(), name: 'Cape Town holiday', type: 'short', member: 'joint', target: 35000, links: [], current: 12500, monthly: 1500, returnPct: 7, targetDate: '2027-12', todayMoney: false },
       { id: HS.uid(), name: 'Kids\' university fund', type: 'long', member: 'joint', target: 450000, links: ['h-ut'], current: 0, monthly: 1000, returnPct: 10, targetDate: '2042-01', todayMoney: true },
       { id: HS.uid(), name: 'Next car deposit', type: 'short', member: 'm1', target: 60000, links: [], current: 8000, monthly: 1000, returnPct: 7, targetDate: '2029-06', todayMoney: false }
