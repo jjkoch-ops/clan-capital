@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en-ZA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Clan Capital</title>
+<meta name="description" content="Track a South African family's income, spending, budget, investments and debt, for the whole household and each member.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <h1>Clan Capital</h1>
+      <span class="household" id="household-name"></span>
+    </div>
+    <div class="member-filter" id="member-filter" role="group" aria-label="Show figures for"></div>
+  </div>
+  <nav class="tabs" aria-label="Sections">
+    <div class="tabs-inner" role="tablist" id="tabs">
+      <button class="tab" role="tab" data-tab="overview">Overview</button>
+      <button class="tab" role="tab" data-tab="money">Income &amp; spending</button>
+      <button class="tab" role="tab" data-tab="budget">Budget</button>
+      <button class="tab" role="tab" data-tab="investments">Investments</button>
+      <button class="tab" role="tab" data-tab="goals">Goals</button>
+      <button class="tab" role="tab" data-tab="debt">Debt</button>
+      <button class="tab" role="tab" data-tab="data">Import &amp; settings</button>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+  <div id="sample-banner"></div>
+  <div id="view"></div>
+  <p class="footer-note">Your figures stay in this browser. Nothing is uploaded to a server.</p>
+</main>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/sample.js"></script>
+<script src="js/planner.js"></script>
+<script src="js/goals.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
